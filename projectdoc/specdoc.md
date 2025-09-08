@@ -50,13 +50,13 @@ Verify that the Signature has been generated with the respective RSA Key and sig
 ### Time and Space Complexity (Expected):
 The following are for baseline implementations of the core (non-optional) algorithms:
 
-| Algorithm                            | Time Complexity           | Space Complexity |
-|--------------------------------------|---------------------------|------------------|
-| Sieve of Eratosthenes                | O(n *log* *log* n)        | O(n)             |
-| Miller-Rabin Primality Test          | O(k *log*<sup>3</sup> n)  | O(*log* n)       |
-| RSA Key Generation                   | O(k(*log*<sup>4</sup> n)) | O(*log* n)       |
-| Textbook RSA Encryption/Verification | O(*log*<sup>2</sup> n)    | O(*log* n)       |
-| Textbook RSA Decryption/Signing      | O(*log*<sup>3</sup> n)    | O(*log* n)       |
+| Algorithm                            | Time Complexity           | Space Complexity | Arguments                                        |
+|--------------------------------------|---------------------------|------------------|--------------------------------------------------|
+| Sieve of Eratosthenes                | O(n *log* *log* n)        | O(n)             | n - Highest Number Checked for Prime             |
+| Miller-Rabin Primality Test          | O(k *log*<sup>3</sup> n)  | O(*log* n)       | n - Number Being Tested, k- Number of Tests      |
+| RSA Key Generation                   | O(k(*log*<sup>4</sup> n)) | O(*log* n)       | n - Desired Prime Magnitude, k- Number of Tests  |
+| Textbook RSA Encryption/Verification | O(*log*<sup>2</sup> n)    | O(*log* n)       | n - RSA Modulus                                  |
+| Textbook RSA Decryption/Signing      | O(*log*<sup>3</sup> n)    | O(*log* n)       | n - RSA Modulus                                  |
 
 Optional implementations are not represented as no specific algorithm has been selected for all of them.
 #### Sources:
