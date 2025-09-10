@@ -5,11 +5,12 @@ primes, but a later implementation of provable primes is not out of the question
 """
 # Copyright (c) 2025-present Tech. TTGames
 # SPDX-License-Identifier: EPL-2.0
-import hashlib
 import getpass
+import hashlib
 import platform
 
 _SMALL_PRIMES: list[int] | None = None
+
 
 def _sieve(n: int = 10000) -> list[int]:
     """Implements the Sieve of Eratosthenes.
@@ -27,15 +28,16 @@ def _sieve(n: int = 10000) -> list[int]:
         raise ValueError("n must be > 0")
     if n == 1:
         return []
-    i_size = (n-1) //2
+    i_size = (n - 1) // 2
     candidate: list[bool] = [True] * i_size
-    for i in range(int(n**0.5)//2):
+    for i in range(int(n**0.5) // 2):
         if candidate[i]:
-            r = 2*i + 3
-            for j in range((r*r-3)//2, i_size, r):
+            r = 2 * i + 3
+            for j in range((r * r - 3) // 2, i_size, r):
                 candidate[j] = False
-    result = [2] + [(no*2+3) for no, ele in enumerate(candidate) if ele]
+    result = [2] + [(no * 2 + 3) for no, ele in enumerate(candidate) if ele]
     return result
+
 
 def get_pre_primes(n: int = 10000, change: bool = False) -> list[int]:
     """Get the small primes, automatically generating if necessary.
@@ -54,6 +56,7 @@ def get_pre_primes(n: int = 10000, change: bool = False) -> list[int]:
     if change or _SMALL_PRIMES is None:
         _SMALL_PRIMES = _sieve(n)
     return _SMALL_PRIMES
+
 
 def import_primes(file: str, sha: str, unsalted: bool = False) -> None:
     """Imports primes from file, including SHA verification.
@@ -77,7 +80,7 @@ def import_primes(file: str, sha: str, unsalted: bool = False) -> None:
         base.update(f.read())
     if base.hexdigest() != sha:
         raise RuntimeError("SHA-384 file verification failed.")
-    with open(file, "r") as f:
+    with open(file, "r", encoding="utf-8") as f:
         _SMALL_PRIMES = [int(line.strip()) for line in f]
 
 
