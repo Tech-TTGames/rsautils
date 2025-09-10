@@ -20,6 +20,9 @@ optional = true
 [tool.poetry.group.dev.dependencies]
 isort = "^6.0.1"
 yapf = "^0.43.0"
+pylint = "^3.3.8"
+pytest = "^8.4.2"
+coverage = "^7.10.6"
 
 [tool.yapf]
 based_on_style = "google"
@@ -28,6 +31,11 @@ column_limit = 120
 [tool.isort]
 profile = "google"
 lines_between_types = 1
+
+[tool.pytest.ini_options]
+addopts = [
+    "--import-mode=importlib",
+]
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
