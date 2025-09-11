@@ -19,14 +19,14 @@ def _sieve(n: int = 10000) -> list[int]:
     Includes memory space optimization and sieving until root.
 
     Args:
-        n: The number up to which to generate primes. Defaults to 10000. Must be > 0.
+        n: The number up to which to generate primes. Defaults to 10000. Must be >= 0.
 
     Returns:
         A list of primes up to `n`.
     """
-    if n <= 0:
-        raise ValueError("n must be > 0")
-    if n == 1:
+    if n < 0:
+        raise ValueError("n must be >= 0")
+    if n < 2:
         return []
     i_size = (n - 1) // 2
     candidate: list[bool] = [True] * i_size
@@ -97,8 +97,8 @@ def _trial_division(no: int, n: int = 10000) -> bool:
     Returns:
         False if `no` cannot be prime, True otherwise.
     """
-    if n < 0 or not isinstance(no, int):
-        raise ValueError("Number to check must be a non-negative integer.")
+    if no < 0:
+        raise ValueError("Number to check must be non-negative.")
     if no < 2:
         return False
     for prime in get_pre_primes(n):
