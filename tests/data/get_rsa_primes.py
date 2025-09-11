@@ -1,6 +1,7 @@
 """Generates realistic Primes for Unit Testing."""
 # Don't really rerun this.
 import pickle
+
 from cryptography.hazmat.primitives.asymmetric import rsa
 
 pkey2048 = rsa.generate_private_key(public_exponent=65537, key_size=2048)

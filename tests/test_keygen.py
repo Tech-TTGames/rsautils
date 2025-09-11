@@ -1,5 +1,7 @@
+# pylint: disable=protected-access,missing-module-docstring
 import os
 import pickle
+
 import pytest
 
 from rsautils import keygen
@@ -50,6 +52,7 @@ def test_sieve_large_approx(n, expected):
     # Not the intended use of the function, but included as a sanity check.
     assert len(keygen._sieve(n)) == expected
 
+
 @pytest.mark.parametrize("n", [-27358709381728, -10, -1])
 def test_sieve_errors(n):
     with pytest.raises(ValueError):
@@ -69,12 +72,12 @@ def test_get_pre_primes_cache(mocker):
 
 
 def test_get_pre_primes_returns(mocker):
-   mocked_primes = [2, 3, 5, 7, 11]
-   mocker.patch("rsautils.keygen._sieve", return_value=mocked_primes)
-   mocker.patch("rsautils.keygen._SMALL_PRIMES", [])
-   rs = keygen.get_pre_primes()
-   assert rs == mocked_primes
-   assert keygen._SMALL_PRIMES == mocked_primes
+    mocked_primes = [2, 3, 5, 7, 11]
+    mocker.patch("rsautils.keygen._sieve", return_value=mocked_primes)
+    mocker.patch("rsautils.keygen._SMALL_PRIMES", [])
+    rs = keygen.get_pre_primes()
+    assert rs == mocked_primes
+    assert keygen._SMALL_PRIMES == mocked_primes
 
 
 def test_import_primes():
@@ -124,6 +127,7 @@ def test_import_primes():
     ids=id_generator)
 def test_trial_division(num, expected):
     assert keygen._trial_division(num) == expected
+
 
 @pytest.mark.parametrize("n", [-27358709381728, -10, -1])
 def test_trial_division_error(n):
