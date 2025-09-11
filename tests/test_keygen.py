@@ -61,7 +61,7 @@ def test_sieve_errors(n):
 
 def test_get_pre_primes_cache(mocker):
     mocker.patch("rsautils.keygen._sieve")
-    mocker.patch("rsautils.keygen._SMALL_PRIMES", [])
+    mocker.patch("rsautils.keygen._SMALL_PRIMES", None)
     n = 34198  # Arbitrary number to test whether it passes
     keygen.get_pre_primes(n)
     keygen._sieve.assert_called_once_with(n)
@@ -74,7 +74,7 @@ def test_get_pre_primes_cache(mocker):
 def test_get_pre_primes_returns(mocker):
     mocked_primes = [2, 3, 5, 7, 11]
     mocker.patch("rsautils.keygen._sieve", return_value=mocked_primes)
-    mocker.patch("rsautils.keygen._SMALL_PRIMES", [])
+    mocker.patch("rsautils.keygen._SMALL_PRIMES", None)
     rs = keygen.get_pre_primes()
     assert rs == mocked_primes
     assert keygen._SMALL_PRIMES == mocked_primes
