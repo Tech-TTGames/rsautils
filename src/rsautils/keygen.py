@@ -7,11 +7,33 @@ primes, but a later implementation of provable primes is not out of the question
 # SPDX-License-Identifier: EPL-2.0
 import getpass
 import hashlib
+import pathlib
 import platform
 import secrets
 
 _SMALL_PRIMES: list[int] = []
 _SMALL_PRIMES_CAP: int = 0
+
+
+def hash_file(file: pathlib.Path, local: bool = True) -> str:
+    """Hash a file and return its hash.
+
+    Args:
+        file: Target file to hash.
+        local: Whether the file is local or not. Defaults to True.
+            If False, does not pepper.
+
+    Returns:
+        The hash of the file.
+    """
+    base = hashlib.sha384()
+    if local:
+        # Note! Peppering is intended to prevent less advanced users from accidentally importing compromised files.
+        p = hashlib.sha384(f"RSALIB_RECIPE:{getpass.getuser()}@{platform.node()}+{platform.system()}".encode()).digest()
+        base.update(p)
+    with open(file, "rb") as f:
+        base.update(f.read())
+    return base.hexdigest()
 
 
 def _sieve(n: int = 10000) -> list[int]:
@@ -65,7 +87,7 @@ def get_pre_primes(n: int = 10000, change: bool = False) -> list[int]:
     return _SMALL_PRIMES
 
 
-def import_primes(file: str, sha: str, unsalted: bool = False) -> None:
+def import_primes(file: pathlib.Path, sha: str, local: bool = True) -> None:
     """Imports primes from file, including SHA verification.
 
     Imports primes from specified file after verification of file integrity.
@@ -73,22 +95,37 @@ def import_primes(file: str, sha: str, unsalted: bool = False) -> None:
     Args:
         file: Path to the file to import.
         sha: SHA-384 hash of the file to verify.
-        unsalted: Don't verify using locally generated salt.
+        local: Whether the file is local or not. Defaults to True.
+            If False, bypasses local pepper requirement.
 
     Raises:
         RuntimeError: SHA-384 hash does not match the SHA-384 hash of the file.
     """
     global _SMALL_PRIMES
-    base = hashlib.sha384()
-    if not unsalted:
-        # Note! Salting is intended to prevent less advanced users from accidentally importing compromised files.
-        base.update(f"RSALIB_RECIPE:{getpass.getuser()}@{platform.node()}+{platform.system()}".encode())
-    with open(file, "rb") as f:
-        base.update(f.read())
-    if base.hexdigest() != sha:
+    global _SMALL_PRIMES_CAP
+    if hash_file(file, local) != sha:
         raise RuntimeError("SHA-384 file verification failed.")
     with open(file, "r", encoding="utf-8") as f:
+        _SMALL_PRIMES_CAP = int(f.readline().strip())
         _SMALL_PRIMES = [int(line.strip()) for line in f]
+
+
+def export_primes(file: pathlib.Path) -> tuple[str, str]:
+    """Exports currently cached small primes to specified file.
+
+    Args:
+        file: Path to the file to export.
+
+    Returns:
+        Tuple of (Locally Peppered SHA-384, Standard SHA-384 hash).
+    """
+    global _SMALL_PRIMES
+    global _SMALL_PRIMES_CAP
+    with open(file, "w", encoding="utf-8") as f:
+        f.write(f"{_SMALL_PRIMES_CAP}\n")
+        for p in _SMALL_PRIMES:
+            f.write(f"{p}\n")
+    return hash_file(file, True), hash_file(file, False)
 
 
 def _trial_division(no: int, n: int = 10000) -> bool:

@@ -175,9 +175,30 @@ def test_get_pre_primes_cache_forced(mocker):
     assert rs == mocked_primes
 
 
-def test_import_primes():
-    # TODO: Placeholder! Will be implemented after we make the "output" for prime generation
-    pass
+def test_export_import_round(mocker, tmp_path):
+    n = 10000
+    mocked_primes = get_expected_primes(n)
+    mocker.patch("rsautils.keygen._SMALL_PRIMES", mocked_primes)
+    mocker.patch("rsautils.keygen._SMALL_PRIMES_CAP", n)
+
+    sha_l, sha_g = keygen.export_primes(tmp_path / "primes.txt")
+    assert os.path.isfile(tmp_path / "primes.txt")
+    keygen._SMALL_PRIMES = []
+    keygen._SMALL_PRIMES_CAP = 0
+    keygen.import_primes(tmp_path / "primes.txt", sha_l)
+    assert keygen._SMALL_PRIMES == mocked_primes
+    assert keygen._SMALL_PRIMES_CAP == n
+    keygen._SMALL_PRIMES = []
+    keygen._SMALL_PRIMES_CAP = 0
+    keygen.import_primes(tmp_path / "primes.txt", sha_g, local=False)
+    assert keygen._SMALL_PRIMES == mocked_primes
+    assert keygen._SMALL_PRIMES_CAP == n
+
+
+@pytest.mark.parametrize("local", [False, True])
+def test_import_integrity(mocker, local):
+    with pytest.raises(RuntimeError):
+        keygen.import_primes(__file__, "NoU", local=local)
 
 
 @pytest.mark.parametrize("num,expected", base_primetest_cases + large_primetest_cases, ids=id_generator)
