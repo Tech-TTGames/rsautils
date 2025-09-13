@@ -153,6 +153,7 @@ def _miller_rabin(w: int, iters: int) -> bool:
     """Perform Miller-Rabin primality test.
 
     Performs the Miller-Rabin primality test as specified in FIPS 186-5.
+    Minor adjustments applied to make the code more efficient due to local utilities.
 
     Args:
         w: Odd integer to be tested.

@@ -1,4 +1,6 @@
 # pylint: disable=protected-access,missing-module-docstring
+# Copyright (c) 2025-present Tech. TTGames
+# SPDX-License-Identifier: EPL-2.0
 import os
 import pickle
 
