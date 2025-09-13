@@ -54,9 +54,9 @@ def test_sieve_large_approx(n, expected):
 
 
 @pytest.mark.parametrize("n", [-27358709381728, -10, -1])
-def test_sieve_errors(n):
+def test_get_pre_primes_errors(n):
     with pytest.raises(ValueError):
-        keygen._sieve(n)
+        keygen.get_pre_primes(n)
 
 
 def test_get_pre_primes_caches(mocker):
@@ -168,7 +168,3 @@ def test_trial_division(num, expected):
     assert keygen._trial_division(num) == expected
 
 
-@pytest.mark.parametrize("n", [-27358709381728, -10, -1])
-def test_trial_division_error(n):
-    with pytest.raises(ValueError):
-        keygen._trial_division(n)

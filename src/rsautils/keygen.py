@@ -25,8 +25,7 @@ def _sieve(n: int = 10000) -> list[int]:
     Returns:
         A list of primes up to `n`.
     """
-    if n < 0:
-        raise ValueError("n must be >= 0")
+    # TODO: To be considered for a reimplementation allowing expanding based on the current list.
     if n < 2:
         return []
     i_size = (n - 1) // 2
@@ -55,6 +54,8 @@ def get_pre_primes(n: int = 10000, change: bool = False) -> list[int]:
     Returns:
         List of small primes in ascending order. Guaranteed to be all primes up to `n`, but may be more unless change is `True`.
     """
+    if n < 0:
+        raise ValueError("n must be >= 0")
     global _SMALL_PRIMES
     global _SMALL_PRIMES_CAP
     if n > _SMALL_PRIMES_CAP or change or not _SMALL_PRIMES:
@@ -102,8 +103,6 @@ def _trial_division(no: int, n: int = 10000) -> bool:
     Returns:
         False if `no` cannot be prime, True otherwise.
     """
-    if no < 0:
-        raise ValueError("Number to check must be non-negative.")
     if no < 2:
         return False
     for prime in get_pre_primes(n):
