@@ -38,6 +38,13 @@ lines_between_types = 1
 addopts = [
     "--import-mode=importlib",
 ]
+markers = [
+    "slow: mark test as slow to run",
+    "extreme: mark test as unrealistic and extremely slow to run"
+]
+testpaths = [
+    "tests",
+]
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

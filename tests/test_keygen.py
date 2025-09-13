@@ -47,7 +47,7 @@ base_primetest_cases = [
 
 large_primetest_cases = [
     # Current Largest Known Prime
-    pytest.param(2**136279841 - 1, True, marks=pytest.mark.slow, id="LargeInt-MaxPrime"),
+    pytest.param(2**136279841 - 1, True, marks=pytest.mark.extreme, id="LargeInt-MaxPrime"),
     # RSA PRIMES
     (rsa_dict[2048][0], True),
     (rsa_dict[2048][1], True),
