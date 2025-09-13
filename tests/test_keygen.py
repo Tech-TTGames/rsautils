@@ -59,25 +59,64 @@ def test_sieve_errors(n):
         keygen._sieve(n)
 
 
-def test_get_pre_primes_cache(mocker):
-    mocker.patch("rsautils.keygen._sieve")
-    mocker.patch("rsautils.keygen._SMALL_PRIMES", None)
-    n = 34198  # Arbitrary number to test whether it passes
-    keygen.get_pre_primes(n)
-    keygen._sieve.assert_called_once_with(n)
-    keygen.get_pre_primes(n - 1)
-    keygen._sieve.assert_called_once()
-    keygen.get_pre_primes(n + 13, change=True)
-    keygen._sieve.assert_called_with(n + 13)
-
-
-def test_get_pre_primes_returns(mocker):
+def test_get_pre_primes_caches(mocker):
     mocked_primes = [2, 3, 5, 7, 11]
     mocker.patch("rsautils.keygen._sieve", return_value=mocked_primes)
-    mocker.patch("rsautils.keygen._SMALL_PRIMES", None)
-    rs = keygen.get_pre_primes()
+    mocker.patch("rsautils.keygen._SMALL_PRIMES", [])
+    mocker.patch("rsautils.keygen._SMALL_PRIMES_CAP", 0)
+    n = 50
+
+    rs = keygen.get_pre_primes(n)
+    keygen._sieve.assert_called_once_with(n)
     assert rs == mocked_primes
-    assert keygen._SMALL_PRIMES == mocked_primes
+
+
+def test_get_pre_primes_cache_hit_under(mocker):
+    mocked_primes = [2, 3, 5, 7, 11]
+    mocker.patch("rsautils.keygen._sieve")
+    mocker.patch("rsautils.keygen._SMALL_PRIMES", mocked_primes)
+    mocker.patch("rsautils.keygen._SMALL_PRIMES_CAP", 50)
+
+    rs = keygen.get_pre_primes(25)
+    keygen._sieve.assert_not_called()
+    assert rs == mocked_primes
+
+
+def test_get_pre_primes_cache_hit_exact(mocker):
+    mocked_primes = [2, 3, 5, 7, 11]
+    mocker.patch("rsautils.keygen._sieve")
+    mocker.patch("rsautils.keygen._SMALL_PRIMES", mocked_primes)
+    mocker.patch("rsautils.keygen._SMALL_PRIMES_CAP", 50)
+
+    rs = keygen.get_pre_primes(50)
+    keygen._sieve.assert_not_called()
+    assert rs == mocked_primes
+
+
+def test_get_pre_primes_cache_miss(mocker):
+    mocked_primes = [2, 3, 5, 7, 11]
+    greater_mocked_primes = [2, 3, 5, 7, 11, 13, 17, 19, 23]
+    mocker.patch("rsautils.keygen._sieve", return_value=greater_mocked_primes)
+    mocker.patch("rsautils.keygen._SMALL_PRIMES", mocked_primes)
+    mocker.patch("rsautils.keygen._SMALL_PRIMES_CAP", 50)
+    n = 75
+
+    rs = keygen.get_pre_primes(n)
+    keygen._sieve.assert_called_once_with(n)
+    assert rs == greater_mocked_primes
+
+
+def test_get_pre_primes_cache_forced(mocker):
+    mocked_primes = [2, 3, 5, 7, 11]
+    greater_mocked_primes = [2, 3, 5, 7, 11, 13, 17, 19, 23]
+    mocker.patch("rsautils.keygen._sieve", return_value=mocked_primes)
+    mocker.patch("rsautils.keygen._SMALL_PRIMES", greater_mocked_primes)
+    mocker.patch("rsautils.keygen._SMALL_PRIMES_CAP", 75)
+    n = 50
+
+    rs = keygen.get_pre_primes(n, change=True)
+    keygen._sieve.assert_called_with(n)
+    assert rs == mocked_primes
 
 
 def test_import_primes():

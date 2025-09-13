@@ -9,7 +9,8 @@ import getpass
 import hashlib
 import platform
 
-_SMALL_PRIMES: list[int] | None = None
+_SMALL_PRIMES: list[int] = []
+_SMALL_PRIMES_CAP: int = 0
 
 
 def _sieve(n: int = 10000) -> list[int]:
@@ -42,19 +43,23 @@ def _sieve(n: int = 10000) -> list[int]:
 def get_pre_primes(n: int = 10000, change: bool = False) -> list[int]:
     """Get the small primes, automatically generating if necessary.
 
-    Accesses the _SMALL_PRIMES global variable in accordance to style guides, using it as a cache if already generated.
-    Passes data to Sieve of Eratosthenes if necessary.
+    Accesses the `_SMALL_PRIMES` global variable in accordance to style guides, using it as a cache if already generated.
+    Passes data to Sieve of Eratosthenes if necessary. Regeneration occurs if requested range is greater, forced by
+    `change` or cache is empty.
 
     Args:
-        n: The number up to which to generate primes. Defaults to 10000.
+        n: The number up to which to generate primes. Defaults to 10000. Must be >= 0.
+            Ignored if smaller or equal than `_SMALL_PRIMES_CAP`, `change` is False and `_SMALL_PRIMES` is non-empty.
         change: Whether to force a recomputation of primes. Defaults to False.
 
     Returns:
-        List of small primes in ascending order. Not guaranteed to be up to `n` unless change is `True`.
+        List of small primes in ascending order. Guaranteed to be all primes up to `n`, but may be more unless change is `True`.
     """
     global _SMALL_PRIMES
-    if change or _SMALL_PRIMES is None:
+    global _SMALL_PRIMES_CAP
+    if n > _SMALL_PRIMES_CAP or change or not _SMALL_PRIMES:
         _SMALL_PRIMES = _sieve(n)
+        _SMALL_PRIMES_CAP = n
     return _SMALL_PRIMES
 
 
@@ -92,7 +97,7 @@ def _trial_division(no: int, n: int = 10000) -> bool:
     Args:
          no: The number to check. Must be integer and non-negative.
          n: The number up to which to generate primes. Defaults to 10000.
-           Passed to `get_pre_primes()`, this function won't cause a regeneration.
+           Passed to `get_pre_primes()`, without the `change` argument.
 
     Returns:
         False if `no` cannot be prime, True otherwise.
