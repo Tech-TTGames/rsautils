@@ -1,17 +1,23 @@
 """Generates realistic Primes for Unit Testing."""
-# Don't really rerun this.
+import os
 import pickle
 
 from cryptography.hazmat.primitives.asymmetric import rsa
 
-pkey2048 = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-pkey4096 = rsa.generate_private_key(public_exponent=65537, key_size=4096)
+target_sizes = [2048, 3072, 4096]
+primes = {}
 
-primes = {
-    2048: (pkey2048.private_numbers().p, pkey2048.private_numbers().q),
-    4096: (pkey4096.private_numbers().p, pkey4096.private_numbers().q),
-}
+if os.path.exists("rsa_primes.pickle"):
+    with open("rsa_primes.pickle", "rb") as f:
+        primes = pickle.load(f)
 
-with open("rsa_primes.pickle", "xb") as f:
-    # Yes, intentionally xb to prevent needles regeneration.
+for size in target_sizes:
+    if size not in primes:
+        print(f"Generating new {size} prime set.")
+        pk = rsa.generate_private_key(public_exponent=65537, key_size=size)
+        primes[size] = (pk.private_numbers().p, pk.private_numbers().q)
+
+with open("rsa_primes.pickle", "wb") as f:
     pickle.dump(primes, f, 5)
+
+print("Unit test data up to date.")

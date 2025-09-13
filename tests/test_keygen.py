@@ -18,6 +18,62 @@ with open(os.path.join(location, "data", "primes.txt"), encoding="utf-8") as f:
 with open(os.path.join(location, "data", "rsa_primes.pickle"), "rb") as f:
     rsa_dict = pickle.load(f)
 
+base_primetest_cases = [
+    # Edge Cases (neither)
+    (0, False),
+    (1, False),
+    # Known Primes
+    (2, True),
+    (3, True),
+    (101, True),
+    (3571, True),
+    (9973, True),
+    # Composite
+    (4, False),
+    (6, False),
+    (9, False),
+    # Fermat Pseudoprimes (numbers that fool naive tests)
+    (341, False),  # 11 * 31
+    (561, False),  # 3 * 11 * 17 (Carmichael number)
+    (1105, False),  # 5 * 13 * 17 (Carmichael number)
+    # Pseudo-prime (PsP)
+    (121, False),
+    (703, False),
+    (781, False),
+    (1541, False),
+    (2047, False),
+    (52633, False),
+]
+
+large_primetest_cases = [
+    # Current Largest Known Prime
+    pytest.param(2**136279841 - 1, True, marks=pytest.mark.slow, id="LargeInt-MaxPrime"),
+    # RSA PRIMES
+    (rsa_dict[2048][0], True),
+    (rsa_dict[2048][1], True),
+    (rsa_dict[3072][0], True),
+    (rsa_dict[3072][1], True),
+    (rsa_dict[4096][0], True),
+    (rsa_dict[4096][1], True),
+    # RSA non-PRIMES (low multiplier)
+    (rsa_dict[2048][0] * 3, False),
+    (rsa_dict[2048][1] * 3, False),
+    (rsa_dict[3072][0] * 3, False),
+    (rsa_dict[3072][1] * 3, False),
+    (rsa_dict[4096][0] * 3, False),
+    (rsa_dict[4096][1] * 3, False)
+]
+
+rsa_composites = [
+    # RSA non-PRIMES (probably)
+    (rsa_dict[2048][0] + 4, False),
+    (rsa_dict[2048][1] + 4, False),
+    (rsa_dict[3072][0] + 4, False),
+    (rsa_dict[3072][1] + 4, False),
+    (rsa_dict[4096][0] + 4, False),
+    (rsa_dict[4096][1] + 4, False)
+]
+
 
 def id_generator(param):
     if isinstance(param, int) and param > 1000000:
@@ -124,46 +180,7 @@ def test_import_primes():
     pass
 
 
-@pytest.mark.parametrize(
-    "num,expected",
-    [
-        # Edge Cases (neither)
-        (0, False),
-        (1, False),
-        # Known Primes
-        (2, True),
-        (3, True),
-        (101, True),
-        (3571, True),
-        (9973, True),
-        (2**136279841 - 1, True),  # Large prime. Because yes.
-        # Composite
-        (4, False),
-        (6, False),
-        (9, False),
-        # Fermat Pseudoprimes (numbers that fool naive tests)
-        (341, False),  # 11 * 31
-        (561, False),  # 3 * 11 * 17 (Carmichael number)
-        (1105, False),  # 5 * 13 * 17 (Carmichael number)
-        # Pseudo-prime (PsP)
-        (121, False),
-        (703, False),
-        (781, False),
-        (1541, False),
-        (2047, False),
-        (52633, False),
-        # RSA PRIMES
-        (rsa_dict[2048][0], True),
-        (rsa_dict[2048][1], True),
-        (rsa_dict[4096][0], True),
-        (rsa_dict[4096][1], True),
-        # RSA-non PRIMES
-        (rsa_dict[2048][0] * 3, False),
-        (rsa_dict[2048][1] * 3, False),
-        (rsa_dict[4096][0] * 3, False),
-        (rsa_dict[4096][1] * 3, False)
-    ],
-    ids=id_generator)
+@pytest.mark.parametrize("num,expected", base_primetest_cases + large_primetest_cases, ids=id_generator)
 def test_trial_division(num, expected):
     assert keygen._trial_division(num) == expected
 
