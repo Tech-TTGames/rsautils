@@ -8,6 +8,7 @@ primes, but a later implementation of provable primes is not out of the question
 import getpass
 import hashlib
 import platform
+import secrets
 
 _SMALL_PRIMES: list[int] = []
 _SMALL_PRIMES_CAP: int = 0
@@ -111,3 +112,63 @@ def _trial_division(no: int, n: int = 10000) -> bool:
         if no % prime == 0:
             return False
     return True
+
+
+def _miller_rabin(w: int, iters: int) -> bool:
+    """Perform Miller-Rabin primality test.
+
+    Performs the Miller-Rabin primality test as specified in FIPS 186-5.
+
+    Args:
+        w: Odd integer to be tested.
+        iters: Number of Miller-Rabin iterations to perform.
+
+    Returns:
+        True if `w` is probably prime, False otherwise.
+    """
+    if w <= 3:
+        return w == 2 or w == 3
+    tw = w - 1
+    a = (tw & -tw).bit_length() - 1
+    m = tw // (2**a)  # Has to be exactly int, as we get "a" above.
+    for _ in range(iters):
+        b = secrets.randbelow(w - 3) + 2
+        z = pow(b, m, w)
+        if z == 1 or z == w - 1:
+            continue
+        for _ in range(1, a):
+            z = pow(z, 2, w)
+            if z == w - 1:
+                break
+            if z == 1:
+                return False
+        else:
+            return False
+    return True
+
+
+def check_prime(candidate: int, iters: None | int = None, n: int = 10000) -> bool:
+    """Performs a composite Primality test, using a limited amount of trial divisions, before a Miller-Rabin test.
+
+    In interest of providing a result expediently we run a trial division with all primes up to `n`, before proceeding
+    with a FIPS 186-5 based Miller-Rabin primality test.
+
+    Args:
+        candidate: The candidate prime to test.
+        iters: Number of Miller-Rabin iterations to perform.
+            If not provided will use defaults as per the FIPS 186-5 Table B.1.
+        n: The number up to which to generate primes. Defaults to 10000.
+            Passed to `_trial_division()`.
+
+    Returns:
+        True if `candidate` is probably prime, False otherwise.
+    """
+    if n < 2:
+        return False
+    if not _trial_division(candidate, n):
+        return False
+    if iters is None:
+        iters = 5
+        if candidate.bit_length() > 1536:
+            iters = 4
+    return _miller_rabin(candidate, iters)

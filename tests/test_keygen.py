@@ -185,3 +185,23 @@ def test_trial_division(num, expected):
     assert keygen._trial_division(num) == expected
 
 
+@pytest.mark.parametrize("n,expected", base_primetest_cases, ids=id_generator)
+def test_miller_rabin(n, expected):
+    assert keygen._miller_rabin(n, 5) == expected
+
+
+@pytest.mark.parametrize("n,expected", large_primetest_cases + rsa_composites, ids=id_generator)
+@pytest.mark.slow
+def test_miller_rabin_ext(n, expected):
+    assert keygen._miller_rabin(n, 5) == expected
+
+
+@pytest.mark.parametrize("n,expected", base_primetest_cases, ids=id_generator)
+def test_check_prime(n, expected):
+    assert keygen.check_prime(n) == expected
+
+
+@pytest.mark.parametrize("n,expected", large_primetest_cases + rsa_composites, ids=id_generator)
+@pytest.mark.slow
+def test_check_prime_ext(n, expected):
+    assert keygen.check_prime(n) == expected
