@@ -196,7 +196,7 @@ def test_export_import_round(mocker, tmp_path):
 
 
 @pytest.mark.parametrize("local", [False, True])
-def test_import_integrity(mocker, local):
+def test_import_integrity(local):
     with pytest.raises(RuntimeError):
         keygen.import_primes(__file__, "NoU", local=local)
 
