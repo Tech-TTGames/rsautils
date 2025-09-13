@@ -65,7 +65,7 @@ def _sieve(n: int = 10000) -> list[int]:
 def get_pre_primes(n: int = 10000, change: bool = False) -> list[int]:
     """Get the small primes, automatically generating if necessary.
 
-    Accesses the `_SMALL_PRIMES` global variable in accordance to style guides, using it as a cache if already generated.
+    Accesses the `_SMALL_PRIMES` global variable in accordance to style guides, using it as a cache if available.
     Passes data to Sieve of Eratosthenes if necessary. Regeneration occurs if requested range is greater, forced by
     `change` or cache is empty.
 
@@ -75,7 +75,7 @@ def get_pre_primes(n: int = 10000, change: bool = False) -> list[int]:
         change: Whether to force a recomputation of primes. Defaults to False.
 
     Returns:
-        List of small primes in ascending order. Guaranteed to be all primes up to `n`, but may be more unless change is `True`.
+        List of primes in ascending order. All primes at least to `n` or more unless `change` is True.
     """
     if n < 0:
         raise ValueError("n must be >= 0")
@@ -119,8 +119,6 @@ def export_primes(file: pathlib.Path) -> tuple[str, str]:
     Returns:
         Tuple of (Locally Peppered SHA-384, Standard SHA-384 hash).
     """
-    global _SMALL_PRIMES
-    global _SMALL_PRIMES_CAP
     with open(file, "w", encoding="utf-8") as f:
         f.write(f"{_SMALL_PRIMES_CAP}\n")
         for p in _SMALL_PRIMES:
