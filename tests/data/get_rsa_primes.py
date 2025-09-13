@@ -7,7 +7,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 target_sizes = [2048, 3072, 4096]
 primes = {}
 
-if os.path.exists("rsa_primes.pickle"):
+if os.path.isfile("rsa_primes.pickle"):
     with open("rsa_primes.pickle", "rb") as f:
         primes = pickle.load(f)
 
