@@ -3,12 +3,8 @@ import pytest
 
 
 def pytest_addoption(parser):
-    parser.addoption(
-        "--skip-slow", action="store_true", default=False, help="skip slower tests"
-    )
-    parser.addoption(
-        "--run-extreme", action="store_true", default=False, help="run extreme value extremely slow tests"
-    )
+    parser.addoption("--skip-slow", action="store_true", default=False, help="skip slower tests")
+    parser.addoption("--run-extreme", action="store_true", default=False, help="run extreme value extremely slow tests")
 
 
 def pytest_collection_modifyitems(config, items):
