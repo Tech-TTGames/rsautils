@@ -61,7 +61,6 @@ jobs:
       uses: github/codeql-action/init@v3
       with:
         languages: ${{ matrix.language }}
-        setup-python-dependencies: false
         queries: security-extended, security-and-quality
 
     - name: Perform CodeQL Analysis
