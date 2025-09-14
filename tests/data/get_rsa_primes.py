@@ -6,7 +6,7 @@ import pickle
 
 from cryptography.hazmat.primitives.asymmetric import rsa
 
-target_sizes = [2048, 3072, 4096]
+target_sizes = [1024, 2048, 3072, 4096]
 primes = {}
 
 if os.path.isfile("rsa_primes.pickle"):

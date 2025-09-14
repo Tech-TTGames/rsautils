@@ -51,6 +51,8 @@ large_primetest_cases = [
     # Current Largest Known Prime
     pytest.param(2**136279841 - 1, True, marks=pytest.mark.extreme, id="LargeInt-MaxPrime"),
     # RSA PRIMES
+    (rsa_dict[1024][0], True),
+    (rsa_dict[1024][1], True),
     (rsa_dict[2048][0], True),
     (rsa_dict[2048][1], True),
     (rsa_dict[3072][0], True),
@@ -58,6 +60,8 @@ large_primetest_cases = [
     (rsa_dict[4096][0], True),
     (rsa_dict[4096][1], True),
     # RSA non-PRIMES (low multiplier)
+    (rsa_dict[1024][0] * 3, False),
+    (rsa_dict[1024][1] * 3, False),
     (rsa_dict[2048][0] * 3, False),
     (rsa_dict[2048][1] * 3, False),
     (rsa_dict[3072][0] * 3, False),
@@ -67,7 +71,17 @@ large_primetest_cases = [
 ]
 
 rsa_composites = [
+    # RSA Prime Composites
+    (rsa_dict[1024][0]*rsa_dict[1024][1], False),
+    (rsa_dict[1024][0]*rsa_dict[2048][1], False),
+    (rsa_dict[2048][0]*rsa_dict[2048][1], False),
+    (rsa_dict[2048][0]*rsa_dict[3072][1], False),
+    (rsa_dict[3072][0]*rsa_dict[3072][1], False),
+    (rsa_dict[3072][0]*rsa_dict[4096][1], False),
+    (rsa_dict[4096][0]*rsa_dict[4096][1], False),
     # RSA non-PRIMES (probably)
+    (rsa_dict[1024][0] + 4, False),
+    (rsa_dict[1024][1] + 4, False),
     (rsa_dict[2048][0] + 4, False),
     (rsa_dict[2048][1] + 4, False),
     (rsa_dict[3072][0] + 4, False),
