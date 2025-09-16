@@ -7,6 +7,7 @@ primes, but a later implementation of provable primes is not out of the question
 # SPDX-License-Identifier: EPL-2.0
 import getpass
 import hashlib
+import math
 import pathlib
 import platform
 import secrets
@@ -208,3 +209,95 @@ def check_prime(candidate: int, iters: None | int = None, n: int = 10000) -> boo
         if candidate.bit_length() > 1536:
             iters = 4
     return _miller_rabin(candidate, iters)
+
+
+def _generate_probable_prime(size: int, pub: int = 65537, prm_p: int | None = None) -> int:
+    """Generate a probable prime number of the specified bit size.
+
+    Implements parts of the FIPS 186-5 protocol for generation of prime numbers that are probably prime.
+    In this case we're using a multi-use function for both p and q.
+
+    Args:
+        size: The size of the prime to generate in bits.
+        pub: The public exponent of the prime to generate in bits. Defaults (and recommended) to use 65537.
+            Has to be odd and in range `(2**16, 2**256)` exclusive.
+        prm_p: The other prime in the pair if this is the second generation. Adds tests as per specification.
+            Optional, if not provided generates 1st prime.
+
+    Returns:
+        A probable prime number.
+
+    Raises:
+        RuntimeError if generation loops way beyond a reasonable time and a bit.
+    """
+    ml = 2
+    if prm_p is None:
+        ml = 1
+    for _ in range(size*5*ml):
+        byts = secrets.randbits(size)
+        # Set first bits to 1 to ensure length.
+        msk = (1 << size - 1) | (1 << size - 2)
+        byts = byts | msk
+        if byts < (2**0.5)*(2**(size-1)):
+            continue
+        if prm_p is not None and abs(prm_p - byts) <= 2**(size-100):
+            continue
+        # If required will move out GCD out of math.
+        if math.gcd(byts-1,pub) == 1 and check_prime(byts):
+            return byts
+    raise RuntimeError("Run an improbable amount of loops with no prime found. Check system random number generator.")
+
+
+def generate_primes(size: int, pub: int = 65537) -> tuple[int, int]:
+    """Generates and IFC-suitable pair of prime numbers.
+
+    Completes the FIPS 186-5 protocol for generating prime numbers that are probably prime, with the main loops being
+    in `_generate_probable_prime`.
+
+    Args:
+        size: The key size to generate the prime pair for. Must be even.
+        pub: The public exponent of the prime to generate in bits. Defaults (and recommended) to use 65537.
+            Has to be odd and in range `(2**16, 2**256)` exclusive.
+
+    Returns:
+        A pair of IFC-suitable prime numbers, against specified exponent.
+
+    Raises:
+        ValueError if `size` is an insecure size or `pub` does not meet requirements.
+    """
+    if size < 2048:
+        raise ValueError("Size must be at least 2048.")
+    if size % 2 != 0:
+        raise ValueError("Size must be an even number.")
+    if pub % 2 == 0 or not (2**16 < pub < 2**256):
+        raise ValueError("Public exponent does not meet requirements.")
+    p = _generate_probable_prime(size//2, pub)
+    q = _generate_probable_prime(size//2, pub, p)
+    while p == q: # (Un)Likely story.
+        q = _generate_probable_prime(size, pub, p)
+    return p, q
+
+
+def generate_key(size: int, pub: int = 65537, export_primes: bool = False) -> tuple[tuple[int, int], tuple[int, int]] | tuple[tuple[int, int], tuple[int, int], tuple[int, int]]:
+    """Generates an RSA key pair.
+
+    Fully generates a valid RSA Key, including generating the private exponent and public exponent.
+
+    Args:
+        size: The key size to generate the prime pair for. Must be even.
+        pub: The public exponent of the prime to generate in bits. Defaults (and recommended) to use 65537.
+            Has to be odd and in range `(2**16, 2**256)` exclusive.
+        export_primes: Whether to export the prime numbers as well or not. Defaults to False.
+            Provides some acceleration for decryption if used correctly.
+
+    Returns:
+        A tuple of tuples of (public, private) sub-tuples (modulus, exponent).
+    """
+    p, q = generate_primes(size, pub)
+    n = p * q
+    d = pow(pub, -1, (p-1)*(q-1)) # If necessary, I'll move it out of builtins.
+    if not export_primes:
+        del p, q
+        return (n, pub), (n, d)
+    return (n, pub), (n, d), (p, q)
+
