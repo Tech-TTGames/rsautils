@@ -72,13 +72,13 @@ large_primetest_cases = [
 
 rsa_composites = [
     # RSA Prime Composites
-    (rsa_dict[1024][0]*rsa_dict[1024][1], False),
-    (rsa_dict[1024][0]*rsa_dict[2048][1], False),
-    (rsa_dict[2048][0]*rsa_dict[2048][1], False),
-    (rsa_dict[2048][0]*rsa_dict[3072][1], False),
-    (rsa_dict[3072][0]*rsa_dict[3072][1], False),
-    (rsa_dict[3072][0]*rsa_dict[4096][1], False),
-    (rsa_dict[4096][0]*rsa_dict[4096][1], False),
+    (rsa_dict[1024][0] * rsa_dict[1024][1], False),
+    (rsa_dict[1024][0] * rsa_dict[2048][1], False),
+    (rsa_dict[2048][0] * rsa_dict[2048][1], False),
+    (rsa_dict[2048][0] * rsa_dict[3072][1], False),
+    (rsa_dict[3072][0] * rsa_dict[3072][1], False),
+    (rsa_dict[3072][0] * rsa_dict[4096][1], False),
+    (rsa_dict[4096][0] * rsa_dict[4096][1], False),
     # RSA non-PRIMES (probably)
     (rsa_dict[1024][0] + 4, False),
     (rsa_dict[1024][1] + 4, False),

@@ -233,17 +233,17 @@ def _generate_probable_prime(size: int, pub: int = 65537, prm_p: int | None = No
     ml = 2
     if prm_p is None:
         ml = 1
-    for _ in range(size*5*ml):
+    for _ in range(size * 5 * ml):
         byts = secrets.randbits(size)
         # Set first bits to 1 to ensure length.
         msk = (1 << size - 1) | (1 << size - 2)
         byts = byts | msk
-        if byts < (2**0.5)*(2**(size-1)):
+        if byts < (2**0.5) * (2**(size - 1)):
             continue
-        if prm_p is not None and abs(prm_p - byts) <= 2**(size-100):
+        if prm_p is not None and abs(prm_p - byts) <= 2**(size - 100):
             continue
         # If required will move out GCD out of math.
-        if math.gcd(byts-1,pub) == 1 and check_prime(byts):
+        if math.gcd(byts - 1, pub) == 1 and check_prime(byts):
             return byts
     raise RuntimeError("Run an improbable amount of loops with no prime found. Check system random number generator.")
 
@@ -269,16 +269,20 @@ def generate_primes(size: int, pub: int = 65537) -> tuple[int, int]:
         raise ValueError("Size must be at least 2048.")
     if size % 2 != 0:
         raise ValueError("Size must be an even number.")
-    if pub % 2 == 0 or not (2**16 < pub < 2**256):
+    if pub % 2 == 0 or not 2**16 < pub < 2**256:
         raise ValueError("Public exponent does not meet requirements.")
-    p = _generate_probable_prime(size//2, pub)
-    q = _generate_probable_prime(size//2, pub, p)
-    while p == q: # (Un)Likely story.
+    p = _generate_probable_prime(size // 2, pub)
+    q = _generate_probable_prime(size // 2, pub, p)
+    while p == q:  # (Un)Likely story.
         q = _generate_probable_prime(size, pub, p)
     return p, q
 
 
-def generate_key(size: int, pub: int = 65537, export_primes: bool = False) -> tuple[tuple[int, int], tuple[int, int]] | tuple[tuple[int, int], tuple[int, int], tuple[int, int]]:
+def generate_key(
+    size: int,
+    pub: int = 65537,
+    expose_primes: bool = False
+) -> tuple[tuple[int, int], tuple[int, int]] | tuple[tuple[int, int], tuple[int, int], tuple[int, int]]:
     """Generates an RSA key pair.
 
     Fully generates a valid RSA Key, including generating the private exponent and public exponent.
@@ -287,7 +291,7 @@ def generate_key(size: int, pub: int = 65537, export_primes: bool = False) -> tu
         size: The key size to generate the prime pair for. Must be even.
         pub: The public exponent of the prime to generate in bits. Defaults (and recommended) to use 65537.
             Has to be odd and in range `(2**16, 2**256)` exclusive.
-        export_primes: Whether to export the prime numbers as well or not. Defaults to False.
+        expose_primes: Whether to export the prime numbers as well or not. Defaults to False.
             Provides some acceleration for decryption if used correctly.
 
     Returns:
@@ -295,9 +299,8 @@ def generate_key(size: int, pub: int = 65537, export_primes: bool = False) -> tu
     """
     p, q = generate_primes(size, pub)
     n = p * q
-    d = pow(pub, -1, (p-1)*(q-1)) # If necessary, I'll move it out of builtins.
-    if not export_primes:
+    d = pow(pub, -1, (p - 1) * (q - 1))  # If necessary, I'll move it out of builtins.
+    if not expose_primes:
         del p, q
         return (n, pub), (n, d)
     return (n, pub), (n, d), (p, q)
-
