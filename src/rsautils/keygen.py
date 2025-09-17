@@ -11,6 +11,7 @@ import math
 import pathlib
 import platform
 import secrets
+from typing import Literal, overload
 
 _SMALL_PRIMES: list[int] = []
 _SMALL_PRIMES_CAP: int = 0
@@ -200,7 +201,7 @@ def check_prime(candidate: int, iters: None | int = None, n: int = 10000) -> boo
     Returns:
         True if `candidate` is probably prime, False otherwise.
     """
-    if n < 2:
+    if candidate < 2:
         return False
     if not _trial_division(candidate, n):
         return False
@@ -238,9 +239,10 @@ def _generate_probable_prime(size: int, pub: int = 65537, prm_p: int | None = No
         # Set first bits to 1 to ensure length.
         msk = (1 << size - 1) | (1 << size - 2)
         byts = byts | msk
-        if byts < (2**0.5) * (2**(size - 1)):
-            continue
-        if prm_p is not None and abs(prm_p - byts) <= 2**(size - 100):
+        # Dead Code: msk guarantees above the requirement.
+        # if byts**2 < (1 << (2 * size - 1)):
+        #     continue
+        if prm_p is not None and abs(prm_p - byts) <= (1 << (size - 100)):
             continue
         # If required will move out GCD out of math.
         if math.gcd(byts - 1, pub) == 1 and check_prime(byts):
@@ -274,15 +276,29 @@ def generate_primes(size: int, pub: int = 65537) -> tuple[int, int]:
     p = _generate_probable_prime(size // 2, pub)
     q = _generate_probable_prime(size // 2, pub, p)
     while p == q:  # (Un)Likely story.
-        q = _generate_probable_prime(size, pub, p)
+        q = _generate_probable_prime(size // 2, pub, p)
     return p, q
 
 
-def generate_key(
+@overload
+def generate_key_pair(size: int,
+                      pub: int = 65537,
+                      expose_primes: Literal[False] = False) -> tuple[tuple[int, int], tuple[int, int]]:
+    ...
+
+
+@overload
+def generate_key_pair(size: int,
+                      pub: int = 65537,
+                      expose_primes: Literal[True] = False) -> tuple[tuple[int, int], tuple[int, int, int, int]]:
+    ...
+
+
+def generate_key_pair(
     size: int,
     pub: int = 65537,
     expose_primes: bool = False
-) -> tuple[tuple[int, int], tuple[int, int]] | tuple[tuple[int, int], tuple[int, int], tuple[int, int]]:
+) -> tuple[tuple[int, int], tuple[int, int]] | tuple[tuple[int, int], tuple[int, int, int, int]]:
     """Generates an RSA key pair.
 
     Fully generates a valid RSA Key, including generating the private exponent and public exponent.
@@ -295,7 +311,8 @@ def generate_key(
             Provides some acceleration for decryption if used correctly.
 
     Returns:
-        A tuple of tuples of (public, private) sub-tuples (modulus, exponent).
+        A tuple of tuples of (public, private) sub-tuples (modulus, exponent) or if exposed for the private
+        (modulus, exponent, p, q)
     """
     p, q = generate_primes(size, pub)
     n = p * q
@@ -303,4 +320,4 @@ def generate_key(
     if not expose_primes:
         del p, q
         return (n, pub), (n, d)
-    return (n, pub), (n, d), (p, q)
+    return (n, pub), (n, d, p, q)
