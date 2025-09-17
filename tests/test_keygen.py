@@ -260,9 +260,9 @@ def test_generate_probable_prime_size(size):
 def test_generate_probable_prime_isprime(size):
     size = size // 2
     p = keygen._generate_probable_prime(size)
-    assert sympy.isprime(p) == True
+    assert sympy.isprime(p)
     q = keygen._generate_probable_prime(size, p)
-    assert sympy.isprime(q) == True
+    assert sympy.isprime(q)
 
 
 @pytest.mark.parametrize("size", test_sizes)
@@ -283,8 +283,8 @@ def test_generate_probably_prime_improbable_conditions(mocker):
     good_q = rsa_dict[prime_size][1] | msk
     bad_q_candidate = p + 2
 
-    mocker.patch('secrets.randbits', side_effect=[bad_q_candidate, good_q])
-    mocker.patch('rsautils.keygen.check_prime', return_value=True)
+    mocker.patch("secrets.randbits", side_effect=[bad_q_candidate, good_q])
+    mocker.patch("rsautils.keygen.check_prime", return_value=True)
 
     found_q = keygen._generate_probable_prime(prime_size // 2, prm_p=p)
 
