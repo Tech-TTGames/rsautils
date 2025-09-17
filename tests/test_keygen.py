@@ -1,10 +1,13 @@
 # pylint: disable=protected-access,missing-module-docstring
 # Copyright (c) 2025-present Tech. TTGames
 # SPDX-License-Identifier: EPL-2.0
+import math
 import os
 import pickle
+import secrets
 
 import pytest
+import sympy
 
 from rsautils import keygen
 
@@ -90,6 +93,16 @@ rsa_composites = [
     (rsa_dict[4096][1] + 4, False)
 ]
 
+test_sizes = [
+    1024,
+    2048,
+    3072,
+    pytest.param(4096, marks=pytest.mark.slow),
+    pytest.param(7680, marks=pytest.mark.extreme),
+    pytest.param(8192, marks=pytest.mark.extreme),
+    pytest.param(15360, marks=pytest.mark.extreme),
+]
+
 
 def id_generator(param):
     if isinstance(param, int) and param > 1000000:
@@ -119,7 +132,9 @@ def test_sieve_large_concrete():
     assert keygen._sieve(SMALL_PRIMES[-1]) == SMALL_PRIMES
 
 
-@pytest.mark.parametrize("n,expected", [(10**5, 9592), (10**6, 78498), (10**7, 664579)])
+@pytest.mark.parametrize(
+    "n,expected", [(10**5, 9592),
+                   (10**6, 78498), pytest.param(10**7, 664579, marks=pytest.mark.slow)])
 def test_sieve_large_approx(n, expected):
     # Not the intended use of the function, but included as a sanity check.
     assert len(keygen._sieve(n)) == expected
@@ -222,23 +237,100 @@ def test_trial_division(num, expected):
     assert keygen._trial_division(num) == expected
 
 
-@pytest.mark.parametrize("n,expected", base_primetest_cases, ids=id_generator)
+@pytest.mark.parametrize("n,expected", base_primetest_cases + large_primetest_cases + rsa_composites, ids=id_generator)
 def test_miller_rabin(n, expected):
     assert keygen._miller_rabin(n, 5) == expected
 
 
-@pytest.mark.parametrize("n,expected", large_primetest_cases + rsa_composites, ids=id_generator)
-@pytest.mark.slow
-def test_miller_rabin_ext(n, expected):
-    assert keygen._miller_rabin(n, 5) == expected
-
-
-@pytest.mark.parametrize("n,expected", base_primetest_cases, ids=id_generator)
+@pytest.mark.parametrize("n,expected", base_primetest_cases + large_primetest_cases + rsa_composites, ids=id_generator)
 def test_check_prime(n, expected):
     assert keygen.check_prime(n) == expected
 
 
-@pytest.mark.parametrize("n,expected", large_primetest_cases + rsa_composites, ids=id_generator)
-@pytest.mark.slow
-def test_check_prime_ext(n, expected):
-    assert keygen.check_prime(n) == expected
+@pytest.mark.parametrize("size", test_sizes)
+def test_generate_probable_prime_size(size):
+    size = size // 2
+    p = keygen._generate_probable_prime(size)
+    assert p.bit_length() == size
+    q = keygen._generate_probable_prime(size, p)
+    assert q.bit_length() == size
+
+
+@pytest.mark.parametrize("size", test_sizes)
+def test_generate_probable_prime_isprime(size):
+    size = size // 2
+    p = keygen._generate_probable_prime(size)
+    assert sympy.isprime(p) == True
+    q = keygen._generate_probable_prime(size, p)
+    assert sympy.isprime(q) == True
+
+
+@pytest.mark.parametrize("size", test_sizes)
+def test_generate_probable_prime_conditions(size):
+    size = size // 2
+    p = keygen._generate_probable_prime(size)
+    q = keygen._generate_probable_prime(size, p)
+    assert math.gcd(p - 1, 65537) == 1
+    assert math.gcd(q - 1, 65537) == 1
+    assert p**2 > (1 << (2 * size - 1))
+    assert q**2 > (1 << (2 * size - 1))
+
+
+def test_generate_probably_prime_improbable_conditions(mocker):
+    prime_size = 2048
+    msk = (1 << (prime_size // 2) - 1) | (1 << (prime_size // 2) - 2)
+    p = rsa_dict[prime_size][0] | msk
+    good_q = rsa_dict[prime_size][1] | msk
+    bad_q_candidate = p + 2
+
+    mocker.patch('secrets.randbits', side_effect=[bad_q_candidate, good_q])
+    mocker.patch('rsautils.keygen.check_prime', return_value=True)
+
+    found_q = keygen._generate_probable_prime(prime_size // 2, prm_p=p)
+
+    assert found_q == good_q
+    assert secrets.randbits.call_count == 2
+
+
+def test_generate_probable_prime_faulty(mocker):
+    mocker.patch("rsautils.keygen.check_prime", return_value=False)
+    with pytest.raises(RuntimeError):
+        keygen._generate_probable_prime(1024)
+
+
+def test_generate_primes_conditions(mocker):
+    size = 2048
+    p = rsa_dict[size][0]
+    q = rsa_dict[size][1]
+    mocker.patch("rsautils.keygen._generate_probable_prime", side_effect=[p, p, q])
+    rp, rq = keygen.generate_primes(size)
+    assert rp == p
+    assert rq == q
+    assert keygen._generate_probable_prime.call_count == 3
+
+
+@pytest.mark.parametrize("size,pub", [(1024, None), (2049, None), (2048, 65538), (2048, 2**16 - 1), (2048, 2**256 + 1)])
+def test_generate_primes_validates(size, pub):
+    with pytest.raises(ValueError):
+        keygen.generate_primes(size, pub)
+
+
+def test_generate_key_pair_roundcryption():
+    pub_key, priv_key = keygen.generate_key_pair(2048)
+    message = 17092025232642
+    ciphertext = pow(message, pub_key[1], pub_key[0])
+    decrypted = pow(ciphertext, priv_key[1], priv_key[0])
+    assert decrypted == message
+
+
+def test_generate_key_pair_functional(mocker):
+    size = 2048
+    src_pub = 65537
+    src_p, src_q = rsa_dict[size]
+    mocker.patch("rsautils.keygen.generate_primes", return_value=(src_p, src_q))
+    (n, pub), (n, d, p, q) = keygen.generate_key_pair(size, src_pub, expose_primes=True)
+    assert src_p == p
+    assert src_q == q
+    assert n == src_p * src_q
+    assert src_pub == pub
+    assert d == pow(src_pub, -1, (src_p - 1) * (src_q - 1))
