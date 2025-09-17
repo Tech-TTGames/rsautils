@@ -239,9 +239,7 @@ def _generate_probable_prime(size: int, pub: int = 65537, prm_p: int | None = No
         # Set first bits to 1 to ensure length.
         msk = (1 << size - 1) | (1 << size - 2)
         byts = byts | msk
-        # Dead Code: msk guarantees above the requirement.
-        # if byts**2 < (1 << (2 * size - 1)):
-        #     continue
+        # We do not check if byts**2 < (1 << (2 * size - 1)) as the mask ensures it is impossible.
         if prm_p is not None and abs(prm_p - byts) <= (1 << (size - 100)):
             continue
         # If required will move out GCD out of math.
