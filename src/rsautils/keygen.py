@@ -314,7 +314,9 @@ def generate_key_pair(
     """
     p, q = generate_primes(size, pub)
     n = p * q
-    d = pow(pub, -1, (p - 1) * (q - 1))  # If necessary, I'll move it out of builtins.
+    # If necessary, I'll move both out of builtins.
+    totient = math.lcm(p - 1, q - 1)
+    d = pow(pub, -1, totient)
     if not expose_primes:
         del p, q
         return (n, pub), (n, d)

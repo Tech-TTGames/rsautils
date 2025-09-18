@@ -333,4 +333,6 @@ def test_generate_key_pair_functional(mocker):
     assert src_q == q
     assert n == src_p * src_q
     assert src_pub == pub
-    assert d == pow(src_pub, -1, (src_p - 1) * (src_q - 1))
+    totient = math.lcm(src_p - 1, src_q - 1)
+    src_d = pow(src_pub, -1, totient)
+    assert d == src_d
