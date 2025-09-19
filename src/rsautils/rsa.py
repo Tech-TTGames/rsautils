@@ -11,20 +11,21 @@ import pathlib
 from pyasn1.codec.der import decoder
 from pyasn1.codec.der import encoder
 from pyasn1.codec.native import decoder as translate
-from pyasn1_modules import rfc2459
+from pyasn1.type import univ
 from pyasn1_modules import rfc5208
 from pyasn1_modules import rfc8017
 
 from rsautils import keygen
 
 HASH_TLL = {
-    "sha256": hashlib.sha256,
-    "sha384": hashlib.sha384,
-    "sha512": hashlib.sha512,
-    "sha3_224": hashlib.sha3_224,
-    "sha3_256": hashlib.sha3_256,
-    "sha3_384": hashlib.sha3_384,
-    "sha3_512": hashlib.sha3_512,
+    "sha256": (hashlib.sha256, rfc8017.id_sha256),
+    "sha384": (hashlib.sha384, rfc8017.id_sha384),
+    "sha512": (hashlib.sha512, rfc8017.id_sha512),
+}
+HASH_OID = {
+    rfc8017.id_sha256: hashlib.sha256,
+    rfc8017.id_sha384: hashlib.sha384,
+    rfc8017.id_sha512: hashlib.sha512,
 }
 
 PEM_TYPES = {
@@ -62,22 +63,25 @@ class RSAPubKey(RSAKey):
         ciphertext = _encrypt(enco, self)
         return b64_enc(ciphertext, self.mod.bit_length())
 
-    def verify(self, message: str, signature: str, sha: str = "sha384") -> bool:
-        hasher = HASH_TLL[sha]
-        hashed = int.from_bytes(hasher(message.encode()).digest(), "big")
+    def verify(self, message: str, signature: str) -> bool:
         signature_int = b64_dec(signature)
-        return _decrypt(signature_int, self) == hashed
+        decr_int = _decrypt(signature_int, self)
+        rec_bytes = decr_int.to_bytes(((decr_int.bit_length() + 7) // 8), byteorder="big")
+        payload, _ = decoder.decode(rec_bytes, asn1Spec=rfc8017.DigestInfo())
+        hasher = HASH_OID[payload["digestAlgorithm"]["algorithm"]]
+        hashd = payload["digest"]
+        return hasher(message.encode()).digest() == hashd
 
     def export(self, file: pathlib.Path) -> None:
         keydata = {"modulus": self.mod, "publicExponent": self.expo}
-        translated = translate.decode(keydata, asn1spec=rfc8017.RSAPublicKey())
+        translated = translate.decode(keydata, asn1Spec=rfc8017.RSAPublicKey())
         encdata = encoder.encode(translated)
         write_pem(file, "PKCS1_PUB", encdata)
 
     @classmethod
     def import_key(cls, file: pathlib.Path) -> "RSAPubKey":
         payload = read_pem(file, "PKCS1_PUB")
-        keydata = decoder.decode(payload, asn1spec=rfc8017.RSAPublicKey())
+        keydata, _ = decoder.decode(payload, asn1Spec=rfc8017.RSAPublicKey())
         return cls(keydata["modulus"], keydata["publicExponent"])
 
 
@@ -119,9 +123,14 @@ class RSAPrivKey(RSAKey):
         return unmarshal_int(payload, enc)
 
     def sign(self, message: str, sha: str = "sha384"):
-        hasher = HASH_TLL[sha]
-        hashed = int.from_bytes(hasher(message.encode()).digest())
-        signature = _encrypt(hashed, self)
+        hasher, ident = HASH_TLL[sha]
+        hashed = hasher(message.encode()).digest()
+        algid = {"algorithm": ident, "parameters": univ.Null("")}
+        tld_algid = translate.decode(algid, asn1Spec=rfc8017.DigestAlgorithm())
+        payload = {"digestAlgorithm": tld_algid, "digest": hashed}
+        tld = translate.decode(payload, asn1Spec=rfc8017.DigestInfo())
+        encoded = int.from_bytes(encoder.encode(tld), byteorder="big")
+        signature = _encrypt(encoded, self)
         return b64_enc(signature, self.mod.bit_length())
 
     def export(self, file):
@@ -130,37 +139,37 @@ class RSAPrivKey(RSAKey):
             "modulus": self.mod,
             "publicExponent": self.pub.expo,
             "privateExponent": self.expo,
-            "p": self.p,
-            "q": self.q,
+            "prime1": self.p,
+            "prime2": self.q,
             "exponent1": self.exp1,
             "exponent2": self.exp2,
             "coefficient": self.coeff,
         }
-        translated = translate.decode(interkey, asn1spec=rfc8017.RSAPrivateKey())
+        translated = translate.decode(interkey, asn1Spec=rfc8017.RSAPrivateKey())
         encoded = encoder.encode(translated)
-        pkraw = {
-            "version": 1,
-            "privateKeyAlgorithm": rfc2459.rsaEncryption,
-            "privateKey": encoded,
-        }
-        f_translate = translate.decode(pkraw, asn1spec=rfc5208.PrivateKeyInfo())
+        pkalgo = {"algorithm": rfc8017.rsaEncryption, "parameters": univ.Null("")}
+        tl_pkalgo = translate.decode(pkalgo, asn1Spec=rfc5208.AlgorithmIdentifier())
+        pkraw = {"version": 0, "privateKeyAlgorithm": tl_pkalgo, "privateKey": encoded}
+        f_translate = translate.decode(pkraw, asn1Spec=rfc5208.PrivateKeyInfo())
         final = encoder.encode(f_translate)
         write_pem(file, "PKCS8", final)
 
     @classmethod
     def import_key(cls, file: pathlib.Path) -> "RSAPrivKey":
         payload = read_pem(file, "PKCS8")
-        decdata = decoder.decode(payload, asn1spec=rfc5208.PrivateKeyInfo())
-        if decdata["version"] != 1:
-            raise IOError("Multiple Primes Keys are not supported.")
-        if decdata["privateKeyAlgorithm"] != rfc2459.rsaEncryption:
+        decdata, _ = decoder.decode(payload, asn1Spec=rfc5208.PrivateKeyInfo())
+        if decdata["version"] != 0:
+            raise IOError("Unsupported version of private key information wrapper")
+        if decdata["privateKeyAlgorithm"][0] != rfc8017.rsaEncryption:
             raise IOError("Private Key Algorithm not supported.")
-        keydata = decoder.decode(decdata["privateKey"], asn1spec=rfc8017.RSAPrivateKey())
+        keydata, _ = decoder.decode(decdata["privateKey"], asn1Spec=rfc8017.RSAPrivateKey())
+        if keydata["version"] != 0:
+            raise IOError("Multi-prime keys are not supported.")
         return cls(keydata["modulus"], keydata["publicExponent"], keydata["privateExponent"], keydata["prime1"],
                    keydata["prime2"], keydata["exponent1"], keydata["exponent2"], keydata["coefficient"])
 
     @classmethod
-    def generate(cls, size, pub_exp) -> "RSAPrivKey":
+    def generate(cls, size, pub_exp=65537) -> "RSAPrivKey":
         (n, pub), (_, d, p, q) = keygen.generate_key_pair(size, pub_exp, True)
         return cls(n, pub, d, p, q)
 
@@ -170,12 +179,12 @@ def read_pem(file, subtype: str) -> bytes:
     with open(file, "r", encoding="ascii") as f:
         headline = f.readline().strip()
         if headline != curr_type[0]:
-            raise RuntimeError(f"PEM Headline {headline} does not match {curr_type[0]}")
+            raise IOError(f"PEM Headline {headline} does not match {curr_type[0]}")
         parcel = []
         while True:
             line = f.readline().strip()
             if not line:
-                raise RuntimeError(f"PEM File does not contain footer: {curr_type[1]}")
+                raise IOError(f"PEM File does not contain footer: {curr_type[1]}")
             if line == curr_type[1]:
                 break
             parcel.append(line)
@@ -188,6 +197,7 @@ def write_pem(file, subtype: str, data: bytes):
     with open(file, "w", encoding="ascii") as f:
         f.write(curr_type[0] + "\n")
         res = "\n".join(payload[i:i + 64] for i in range(0, len(payload), 64))
+        res += "\n" if res else ""
         f.write(res)
         f.write(curr_type[1] + "\n")
 
@@ -274,7 +284,7 @@ def b64_enc(msg: int, msg_size: int) -> str:
 
 
 def b64_dec(msg: str) -> int:
-    """Decodes a base64 encoded string into a int.
+    """Decodes a base64 encoded string into an int.
 
     Args:
         msg: The base64 encoded string.
