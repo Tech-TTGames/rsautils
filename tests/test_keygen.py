@@ -2,7 +2,7 @@
 # Copyright (c) 2025-present Tech. TTGames
 # SPDX-License-Identifier: EPL-2.0
 import math
-import os
+import pathlib
 import pickle
 import secrets
 
@@ -11,16 +11,16 @@ import sympy
 
 from rsautils import keygen
 
-location = os.path.dirname(__file__)
+location = pathlib.Path(__file__).parent
 expected_primes = {}
 # Load precomputed primes for referencing.
-with open(os.path.join(location, "data", "primes.txt"), encoding="utf-8") as f:
+with open(location / "data" / "primes.txt", encoding="utf-8") as f:
     primes = f.read().splitlines()[4:-1]
     SMALL_PRIMES = []
     for line in primes:
         SMALL_PRIMES = SMALL_PRIMES + [int(entry) for entry in line.split()]
 
-with open(os.path.join(location, "data", "rsa_primes.pickle"), "rb") as f:
+with open(location / "data" / "rsa_primes.pickle", "rb") as f:
     rsa_dict = pickle.load(f)
 
 base_primetest_cases = [
@@ -213,7 +213,6 @@ def test_export_import_round(mocker, tmp_path):
     mocker.patch("rsautils.keygen._SMALL_PRIMES_CAP", n)
 
     sha_l, sha_g = keygen.export_primes(tmp_path / "primes.txt")
-    assert os.path.isfile(tmp_path / "primes.txt")
     keygen._SMALL_PRIMES = []
     keygen._SMALL_PRIMES_CAP = 0
     keygen.import_primes(tmp_path / "primes.txt", sha_l)
@@ -276,17 +275,17 @@ def test_generate_probable_prime_conditions(size):
     assert q**2 > (1 << (2 * size - 1))
 
 
-def test_generate_probably_prime_improbable_conditions(mocker):
-    prime_size = 2048
-    msk = (1 << (prime_size // 2) - 1) | (1 << (prime_size // 2) - 2)
-    p = rsa_dict[prime_size][0] | msk
-    good_q = rsa_dict[prime_size][1] | msk
+@pytest.mark.parametrize("size", rsa_dict.keys())
+def test_generate_probably_prime_improbable_conditions(mocker, size):
+    msk = (1 << (size // 2) - 1) | (1 << (size // 2) - 2)
+    p = rsa_dict[size][0] | msk
+    good_q = rsa_dict[size][1] | msk
     bad_q_candidate = p + 2
 
     mocker.patch("secrets.randbits", side_effect=[bad_q_candidate, good_q])
     mocker.patch("rsautils.keygen.check_prime", return_value=True)
 
-    found_q = keygen._generate_probable_prime(prime_size // 2, prm_p=p)
+    found_q = keygen._generate_probable_prime(size // 2, prm_p=p)
 
     assert found_q == good_q
     assert secrets.randbits.call_count == 2
@@ -298,8 +297,8 @@ def test_generate_probable_prime_faulty(mocker):
         keygen._generate_probable_prime(1024)
 
 
-def test_generate_primes_conditions(mocker):
-    size = 2048
+@pytest.mark.parametrize("size", [2048, 3072, 4096])
+def test_generate_primes_conditions(mocker, size):
     p = rsa_dict[size][0]
     q = rsa_dict[size][1]
     mocker.patch("rsautils.keygen._generate_probable_prime", side_effect=[p, p, q])
@@ -315,16 +314,17 @@ def test_generate_primes_validates(size, pub):
         keygen.generate_primes(size, pub)
 
 
-def test_generate_key_pair_roundcryption():
-    pub_key, priv_key = keygen.generate_key_pair(2048)
+@pytest.mark.parametrize("size", [2048, 3072, 4096])
+def test_generate_key_pair_roundcryption(size):
+    pub_key, priv_key = keygen.generate_key_pair(size)
     message = 17092025232642
     ciphertext = pow(message, pub_key[1], pub_key[0])
     decrypted = pow(ciphertext, priv_key[1], priv_key[0])
     assert decrypted == message
 
 
-def test_generate_key_pair_functional(mocker):
-    size = 2048
+@pytest.mark.parametrize("size", [2048, 3072, 4096])
+def test_generate_key_pair_functional(mocker, size):
     src_pub = 65537
     src_p, src_q = rsa_dict[size]
     mocker.patch("rsautils.keygen.generate_primes", return_value=(src_p, src_q))
