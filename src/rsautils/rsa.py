@@ -59,11 +59,32 @@ class RSAPubKey(RSAKey):
     """
 
     def encrypt(self, message: str, enc: str = "utf-8") -> str:
+        """Use the public key to encrypt the message.
+
+        Args:
+            message: The message to encrypt.
+            enc: The encoding standard to use.
+
+        Returns:
+            Base64 encoded encrypted message.
+        """
         enco = marshal_str(message, enc)
         ciphertext = _encrypt(enco, self)
         return b64_enc(ciphertext, self.mod.bit_length())
 
     def verify(self, message: str, signature: str) -> bool:
+        """Verify the signature of the message.
+
+        In a prep-step for us, we are using a wrapped-signature, so here we decode it do "get" which SHA algorithm is
+        used to generate the hash that was signed.
+
+        Args:
+            message: The message to verify the signature against.
+            signature: The base64 encoded signature to verify.
+
+        Returns:
+            True if the signature matches the signature of the message, False otherwise.
+        """
         signature_int = b64_dec(signature)
         decr_int = _decrypt(signature_int, self)
         rec_bytes = decr_int.to_bytes(((decr_int.bit_length() + 7) // 8), byteorder="big")
@@ -73,6 +94,13 @@ class RSAPubKey(RSAKey):
         return hasher(message.encode()).digest() == hashd
 
     def export(self, file: pathlib.Path) -> None:
+        """Export the Public RSA key to file.
+
+        We use the PKCS1 export standard for the public key, due to its lack of information regarding identity.
+
+        Args:
+            file: The file to export the public key to.
+        """
         keydata = {"modulus": self.mod, "publicExponent": self.expo}
         translated = translate.decode(keydata, asn1Spec=rfc8017.RSAPublicKey())
         encdata = encoder.encode(translated)
@@ -80,6 +108,16 @@ class RSAPubKey(RSAKey):
 
     @classmethod
     def import_key(cls, file: pathlib.Path) -> "RSAPubKey":
+        """Import the Public RSA key from file.
+
+        As with the export we use the PKCS1 export standard.
+
+        Args:
+            file: The file to import the public key from.
+
+        Returns:
+            An RSAPubKey object with the imported public key.
+        """
         payload = read_pem(file, "PKCS1_PUB")
         keydata, _ = decoder.decode(payload, asn1Spec=rfc8017.RSAPublicKey())
         return cls(keydata["modulus"], keydata["publicExponent"])
@@ -109,6 +147,18 @@ class RSAPrivKey(RSAKey):
                  exp1: int | None = None,
                  exp2: int | None = None,
                  coeff: int | None = None) -> None:
+        """Initialize the RSA Private Key.
+
+        Args:
+            mod: The modulus of the keypair.
+            pub_exp: The public exponent of the key.
+            priv_exp: The private exponent of the key.
+            p: The private prime 1.
+            q: The private prime 2.
+            exp1: CRT Component dmp1.
+            exp2: CRT Component dmq1.
+            coeff: CRT Component iqmp.
+        """
         super().__init__(mod, priv_exp)
         self.pub: RSAPubKey = RSAPubKey(mod, pub_exp)
         self.p: int = p
@@ -117,12 +167,34 @@ class RSAPrivKey(RSAKey):
         self.exp2: int = exp2 if exp2 is not None else priv_exp % (q - 1)
         self.coeff: int = coeff if coeff is not None else pow(q, -1, p)
 
-    def decrypt(self, message: str, enc: str = "utf-8"):
+    def decrypt(self, message: str, enc: str = "utf-8") -> str:
+        """Decrypts the message using the private key.
+
+        Runs standard RSA decryption on the provided message.
+
+        Args:
+            message: Base64 encoded message to decrypt
+            enc: The encoding to use.
+
+        Returns:
+            The decrypted message.
+        """
         ctext = b64_dec(message)
         payload = _decrypt(ctext, self)
         return unmarshal_int(payload, enc)
 
-    def sign(self, message: str, sha: str = "sha384"):
+    def sign(self, message: str, sha: str = "sha384") -> str:
+        """Signs the message using the private key.
+
+        As noted in verify, we pack our signature in a wrapper to specify the details of our SHA algorithm.
+
+        Args:
+            message: Base64 encoded message to sign
+            sha: The SHA algorithm to use.
+
+        Returns:
+            The base64 encoded message signature.
+        """
         hasher, ident = HASH_TLL[sha]
         hashed = hasher(message.encode()).digest()
         algid = {"algorithm": ident, "parameters": univ.Null("")}
@@ -133,7 +205,15 @@ class RSAPrivKey(RSAKey):
         signature = _encrypt(encoded, self)
         return b64_enc(signature, self.mod.bit_length())
 
-    def export(self, file):
+    def export(self, file: pathlib.Path) -> None:
+        """Exports the RSA Private Key to a file.
+
+        Here we follow the PKCS8 private key export convention, to allow for interoperability with different RSA
+        key consumption apps.
+
+        Args:
+            file: The file to export to.
+        """
         interkey = {
             "version": 0,
             "modulus": self.mod,
@@ -156,6 +236,16 @@ class RSAPrivKey(RSAKey):
 
     @classmethod
     def import_key(cls, file: pathlib.Path) -> "RSAPrivKey":
+        """Imports the RSA Private Key from a file.
+
+        Recognizes solely PKCS8 RSA files, without multi-prime handling. Those are the keys we handle so all is well.
+
+        Args
+            file: The file to import.
+
+        Returns:
+            The imported RSA Private Key.
+        """
         payload = read_pem(file, "PKCS8")
         decdata, _ = decoder.decode(payload, asn1Spec=rfc5208.PrivateKeyInfo())
         if decdata["version"] != 0:
@@ -169,12 +259,37 @@ class RSAPrivKey(RSAKey):
                    keydata["prime2"], keydata["exponent1"], keydata["exponent2"], keydata["coefficient"])
 
     @classmethod
-    def generate(cls, size, pub_exp=65537) -> "RSAPrivKey":
+    def generate(cls, size: int, pub_exp: int =65537) -> "RSAPrivKey":
+        """Generates a RSA Private Key, and it's respective Public Key.
+
+        Generates a whole RSA Keypair within the RSAPrivKey instance.
+
+        Args:
+            size: The size of the RSA Key.
+            pub_exp: The public exponent of the key.
+
+        Returns:
+            A new generated RSA Private Key.
+        """
         (n, pub), (_, d, p, q) = keygen.generate_key_pair(size, pub_exp, True)
         return cls(n, pub, d, p, q)
 
 
-def read_pem(file, subtype: str) -> bytes:
+def read_pem(file: pathlib.Path, subtype: str) -> bytes:
+    """Reads a PEM encoded file.
+
+    Handles reading of PEM files to allow for more copiable keys!
+
+    Args:
+        file: The file to read.
+        subtype: The subtype of PEM encoding to accept.
+
+    Returns:
+        The decoded PEM encoded file.
+
+    Raises:
+        IOError: If the file has invalid PEM encoding.
+    """
     curr_type = PEM_TYPES[subtype]
     with open(file, "r", encoding="ascii") as f:
         headline = f.readline().strip()
@@ -191,7 +306,16 @@ def read_pem(file, subtype: str) -> bytes:
     return base64.b64decode("".join(parcel))
 
 
-def write_pem(file, subtype: str, data: bytes):
+def write_pem(file: pathlib.Path, subtype: str, data: bytes) -> None:
+    """Writes a PEM encoded file.
+
+    Allows for standardized movement of keys etc.
+
+    Args:
+        file: The file to write.
+        subtype: The subtype of PEM encoding to write.
+        data: The data to write.
+    """
     curr_type = PEM_TYPES[subtype]
     payload = base64.b64encode(data).decode()
     with open(file, "w", encoding="ascii") as f:
