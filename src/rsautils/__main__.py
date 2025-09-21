@@ -1,4 +1,9 @@
-"""The Command Line Interface for the utility, including Interactive elements."""
+"""The Command Line Interface for the utility, including Interactive elements.
+
+What I would call a hybrid CLI/ICLI (Command Line Interface/Interactive Command Lice Interface) that automagically
+generates the INTERACTIVE part on-the-fly based on the missing components of the CLI interaction, including the
+option that none are included.
+"""
 # Copyright (c) 2025-present Tech. TTGames
 # SPDX-License-Identifier: EPL-2.0
 import argparse
@@ -36,6 +41,16 @@ needs = {
     "verify": ("public_key", "message", "signature")
 }
 
+
+class SpecPrint:
+    def __init__(self, mode: bool):
+        self.mode = mode
+
+    def __call__(self, mess: str):
+        if not self.mode:
+            print(mess)
+
+
 pubkey = argparse.ArgumentParser(add_help=False)
 pubkey.add_argument("--public_key", "-s", type=pathlib.Path, help=help_dict["public_key"][0])
 privkey = argparse.ArgumentParser(add_help=False)
@@ -72,40 +87,40 @@ def checkmodes(arg: str, mode: tuple[bool, bool]):
     return rw
 
 
-def choice_handler(arg: str, mode: tuple[bool, bool]):
+def choice_handler(arg: str, mode: tuple[bool, bool], prntr: typing.Callable = print):
     rw = checkmodes(arg, mode)
     if not isinstance(rw, tuple):
         return rw
-    print(f"Please specify the {arg}!")
-    print("Description: ", rw[0])
+    prntr(f"Please specify the {arg}!")
+    prntr("Description: ", rw[0])
     choices = rw[1]
     vald = set(choices)
     for choice in choices:
         defstring = " (Default)" if choice == rw[2][1] else ""
         if help_dict.get(choice, None):
-            print(f"{choice} - {help_dict[choice][0]}", defstring)
+            prntr(f"{choice} - {help_dict[choice][0]}", defstring)
         else:
-            print(f"{choice}", defstring)
+            prntr(f"{choice}", defstring)
     if rw[2][1] is not None:
-        print("To accept default just click enter. Otherwise specify value.")
+        prntr("To accept default just click enter. Otherwise specify value.")
     while True:
         ch = input(f"{arg}: ")
         if ch in vald:
             return ch
         if not ch and rw[2][1] is not None:
             return rw[2][1]
-        print("Please select an option from the list.")
+        prntr("Please select an option from the list.")
 
 
-def input_handler(arg: str, mode: tuple[bool, bool]):
+def input_handler(arg: str, mode: tuple[bool, bool], prntr: typing.Callable = print):
     rw = checkmodes(arg, mode)
     if not isinstance(rw, tuple):
         return rw
-    print(f"Please specify the {arg}!")
-    print("Description: ", rw[0])
+    prntr(f"Please specify the {arg}!")
+    prntr("Description: ", rw[0])
     if rw[2][1] is not None:
-        print(f"Default value: {rw[2][1]}")
-        print("To accept default just click enter. Otherwise specify value.")
+        prntr(f"Default value: {rw[2][1]}")
+        prntr("To accept default just click enter. Otherwise specify value.")
     cls = rw[1]
     while True:
         ch = input(f"{arg}: ")
@@ -114,7 +129,7 @@ def input_handler(arg: str, mode: tuple[bool, bool]):
         try:
             return cls(ch)
         except ValueError:
-            print(f"We could not convert your value to {cls.__name__}.")
+            prntr(f"We could not convert your value to {cls.__name__}.")
 
 
 def check_message(mess: str, enc) -> str:
@@ -126,9 +141,10 @@ def check_message(mess: str, enc) -> str:
 
 
 if __name__ == "__main__":
-    print("Welcome to RSA Utils!\n")
     args = corep.parse_args()
     pstatus = (args.non_interactive, args.advanced)
+    pspr = SpecPrint(pstatus[0])
+    pspr("Welcome to RSA Utils!\n")
     if not args.subcommand:
         args.subcommand = choice_handler("subcommand", pstatus)
     for reqs in needs[args.subcommand]:
@@ -140,36 +156,39 @@ if __name__ == "__main__":
                 res = input_handler(reqs, pstatus)
             setattr(args, reqs, res)
         else:
-            print(f"{reqs}: {getattr(args, reqs)}")
-    print("\nInput Complete! Executing...")
+            pspr(f"{reqs}: {getattr(args, reqs)}")
+    pspr("\nInput Complete! Executing...")
     match args.subcommand:
         case "keygen":
             rpk = rsautils.RSAPrivKey.generate(int(args.keysize), args.pub_exponent)
             rpk.export(args.private_key)
             rpk.pub.export(args.public_key)
-            print("\nKey pair generated!")
+            pspr("\nKey pair generated!")
         case "encrypt":
             args.message = check_message(args.message, args.encoding)
             rpu = rsautils.RSAPubKey.import_key(args.public_key)
             ciph = rpu.encrypt(args.message, args.encoding)
-            print(f"Ciphertext:\n{ciph}")
+            pspr("Ciphertext:")
+            print(ciph)
         case "decrypt":
             args.message = check_message(args.message, args.encoding)
             rpk = rsautils.RSAPrivKey.import_key(args.private_key)
             clear = rpk.decrypt(args.message, args.encoding)
-            print(f"Cleartext:\n{clear}")
+            pspr("Cleartext:")
+            print(clear)
         case "sign":
             args.message = check_message(args.message, args.encoding)
             rpk = rsautils.RSAPrivKey.import_key(args.private_key)
             signature = rpk.sign(args.message, args.sha)
-            print(f"Signature:\n{signature}")
+            pspr("Signature:")
+            print(signature)
         case "verify":
             args.message = check_message(args.message, args.encoding)
             rpu = rsautils.RSAPubKey.import_key(args.public_key)
             if rpu.verify(args.message, args.signature):
-                print("Signature Verified!")
+                pspr("Signature Verified!")
             else:
                 print("Signature Verification Failed!")
                 sys.exit(1)
-    print("Thank you for using RSA Utils!")
-    print("Goodbye!")
+    pspr("Thank you for using RSA Utils!")
+    pspr("Goodbye!")
