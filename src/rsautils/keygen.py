@@ -2,6 +2,13 @@
 
 This module is responsible for generating IFC key pairs roughly based on FIPS 186-5. We will be focusing on probable
 primes, but a later implementation of provable primes is not out of the question.
+
+Typical usage example:
+
+    get_pre_primes(12000)
+    hs = hash_file("README.md", local=False)
+    export_primes("primfile")
+    import_primes("primfile")
 """
 # Copyright (c) 2025-present Tech. TTGames
 # SPDX-License-Identifier: EPL-2.0

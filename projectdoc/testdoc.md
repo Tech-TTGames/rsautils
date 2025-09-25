@@ -14,6 +14,8 @@ inputs, using constant inputs where possible based on known-good generation resu
 In contrast, a lot of the tests for `rsa.py` approach testing in a much more integration-testing approach
 checking for end-to-end or interoperability testing rather than providing unit tests for each of the smaller
 test functions.
+This is due to the overall needs for such approach in encryption, decryption and such justifying our favor
+towards such testing rather than unit tests and the current tests provide sufficient detail to test our implementation.
 
 ### Test Inputs
 All test inputs are preset and depending on the test are either known-good lists of the smaller

@@ -2,6 +2,13 @@
 
 Provides RSA Utilities for Encryption, Decryption, Signing, Verification, Exporting Keys to PKCS1 (Public Key) and
 PKCS8 (Private Key). Furthermore, provides various prime-generation utilities under-the-hood.
+
+Typical usage example:
+
+    p, q = generate_primes(2048)
+    pk = RSAPrivKey.generate(3072)
+    c = pk.pub.encrypt("Hi there!")
+    r = pk.decrypt(c)
 """
 # Copyright (c) 2025-present Tech. TTGames
 # SPDX-License-Identifier: EPL-2.0

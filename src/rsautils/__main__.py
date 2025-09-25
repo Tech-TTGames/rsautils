@@ -3,6 +3,12 @@
 What I would call a hybrid CLI/ICLI (Command Line Interface/Interactive Command Lice Interface) that automagically
 generates the INTERACTIVE part on-the-fly based on the missing components of the CLI interaction, including the
 option that none are included.
+
+Typical usage example:
+
+    rsautils
+    OR
+    python -m rsautils
 """
 # Copyright (c) 2025-present Tech. TTGames
 # SPDX-License-Identifier: EPL-2.0
