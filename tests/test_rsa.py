@@ -148,9 +148,9 @@ def test_overflow_underflow_c_rsa(keysize, flow):
     template_key, _ = known_keys[keysize]
     pubkey, priv = localize_keys(template_key)
     with pytest.raises(ValueError):
-        priv.c_rsa(priv.mod*flow)
+        priv.c_rsa(priv.mod * flow)
     with pytest.raises(ValueError):
-        pubkey.c_rsa(pubkey.mod*flow)
+        pubkey.c_rsa(pubkey.mod * flow)
 
 
 @pytest.mark.parametrize("payload", [b"", b"Quick!", b"A" * 64, standard_payload.encode("utf-8")])
