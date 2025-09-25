@@ -127,6 +127,9 @@ def input_handler(arg: str, mode: tuple[bool, bool], prntr: typing.Callable = pr
         ch = input(f"{arg}: ")
         if not ch and rw[2][1] is not None:
             return rw[2][1]
+        if ch == "":
+            prntr("Please provide a value.")
+            continue
         try:
             return cls(ch)
         except ValueError:
