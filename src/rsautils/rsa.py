@@ -3,6 +3,12 @@
 Facilitates core RSA, currently solely under "textbook" RSA conditions. Handles the general key handling as well as
 some supporting functions such as key import/export and miscellaneous preset functions to handle encoding and
 marshalling.
+
+Typical usage example:
+
+    pk = RSAPrivKey.generate(3072)
+    c = pk.pub.encrypt("Hi there!")
+    r = pk.decrypt(c)
 """
 import base64
 import hashlib

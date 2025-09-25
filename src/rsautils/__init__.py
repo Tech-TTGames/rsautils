@@ -14,7 +14,7 @@ from rsautils.keygen import import_primes
 from rsautils.rsa import RSAPrivKey
 from rsautils.rsa import RSAPubKey
 
-__version__ = "0.0.0"
+__version__ = "0.0.1-rc1"
 __all__ = [
     "RSAPrivKey",
     "RSAPubKey",

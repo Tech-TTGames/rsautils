@@ -141,7 +141,8 @@ def check_message(mess: str, enc) -> str:
     return mess
 
 
-if __name__ == "__main__":
+def main():
+    """Core Hybrid CLI/ICLI (Command Line Interface/Interactive Command Lice Interface)"""
     args = corep.parse_args()
     pstatus = (args.non_interactive, args.advanced)
     pspr = SpecPrint(pstatus[0])
@@ -150,7 +151,6 @@ if __name__ == "__main__":
         args.subcommand = choice_handler("subcommand", pstatus)
     for reqs in needs[args.subcommand]:
         if getattr(args, reqs, None) is None:
-            res = None
             if isinstance(help_dict[reqs][1], list):
                 res = choice_handler(reqs, pstatus)
             else:
@@ -193,3 +193,7 @@ if __name__ == "__main__":
                 sys.exit(1)
     pspr("Thank you for using RSA Utils!")
     pspr("Goodbye!")
+
+
+if __name__ == "__main__":
+    main()
