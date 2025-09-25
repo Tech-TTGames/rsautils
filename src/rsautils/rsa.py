@@ -50,6 +50,24 @@ class RSAKey:
         self.mod = mod
         self.expo = expo
 
+    def c_rsa(self, message: int) -> int:
+        """Performs core RSA operation. (Encrypt/Decrypt/Sign/Verify).
+
+        Baseline RSA Primitive for encryption purposes.
+
+        Args:
+            message: The int-marshalled message to encrypt
+
+        Returns:
+            The encrypted message
+
+        Raises:
+            ValueError: If the message is out of range for the current key.
+        """
+        if not 0 <= message < self.mod:
+            raise ValueError("Message representative must be in range [0, mod-1]")
+        return pow(message, self.expo, self.mod)
+
 
 class RSAPubKey(RSAKey):
     """A rather straightforward subclass of RSAKey, for Public Keys.
@@ -68,8 +86,8 @@ class RSAPubKey(RSAKey):
         Returns:
             Base64 encoded encrypted message.
         """
-        enco = marshal_str(message, enc)
-        ciphertext = _encrypt(enco, self)
+        enco = bytes_to_integer(message.encode(enc))
+        ciphertext = self.c_rsa(enco)
         return b64_enc(ciphertext, self.mod.bit_length())
 
     def verify(self, message: str, signature: str) -> bool:
@@ -86,8 +104,8 @@ class RSAPubKey(RSAKey):
             True if the signature matches the signature of the message, False otherwise.
         """
         signature_int = b64_dec(signature)
-        decr_int = _decrypt(signature_int, self)
-        rec_bytes = decr_int.to_bytes(((decr_int.bit_length() + 7) // 8), byteorder="big")
+        decr_int = self.c_rsa(signature_int)
+        rec_bytes = integer_to_bytes(decr_int, self.mod.bit_length()).lstrip(b"\x00")
         payload, _ = decoder.decode(rec_bytes, asn1Spec=rfc8017.DigestInfo())
         hasher = HASH_OID[payload["digestAlgorithm"]["algorithm"]]
         hashd = payload["digest"]
@@ -142,8 +160,8 @@ class RSAPrivKey(RSAKey):
                  mod: int,
                  pub_exp: int,
                  priv_exp: int,
-                 p: int,
-                 q: int,
+                 p: int | None = None,
+                 q: int | None = None,
                  exp1: int | None = None,
                  exp2: int | None = None,
                  coeff: int | None = None) -> None:
@@ -161,11 +179,41 @@ class RSAPrivKey(RSAKey):
         """
         super().__init__(mod, priv_exp)
         self.pub: RSAPubKey = RSAPubKey(mod, pub_exp)
-        self.p: int = p
-        self.q: int = q
-        self.exp1: int = exp1 if exp1 is not None else priv_exp % (p - 1)
-        self.exp2: int = exp2 if exp2 is not None else priv_exp % (q - 1)
-        self.coeff: int = coeff if coeff is not None else pow(q, -1, p)
+        self.p: int | None = None
+        self.q: int | None = None
+        self.exp1: int | None = None
+        self.exp2: int | None = None
+        self.coeff: int | None = None
+        if p and q:
+            self.p = p
+            self.q = q
+            self.exp1 = exp1 if exp1 is not None else priv_exp % (p - 1)
+            self.exp2 = exp2 if exp2 is not None else priv_exp % (q - 1)
+            self.coeff = coeff if coeff is not None else pow(q, -1, p)
+
+    def c_rsa(self, message: int) -> int:
+        """Performs core RSA operation accelerated with CRT. (Decrypt/Sign)
+
+        The underlying RSA primitive to decrypt/sing the message.
+
+        Args:
+            message: The int-marshalled message to encrypt
+
+        Returns:
+            The encrypted message
+
+        Raises:
+            ValueError: If the message is out of range for the current key.
+        """
+        if not self.p or not self.q:
+            return super().c_rsa(message)
+        if not 0 <= message < self.mod:
+            raise ValueError("Message representative must be in range [0, mod-1]")
+        m_1 = pow(message, self.exp1, self.p)
+        m_2 = pow(message, self.exp2, self.q)
+        h = ((m_1 - m_2) * self.coeff) % self.p
+        m = m_2 + self.q * h
+        return m
 
     def decrypt(self, message: str, enc: str = "utf-8") -> str:
         """Decrypts the message using the private key.
@@ -180,8 +228,9 @@ class RSAPrivKey(RSAKey):
             The decrypted message.
         """
         ctext = b64_dec(message)
-        payload = _decrypt(ctext, self)
-        return unmarshal_int(payload, enc)
+        payload = self.c_rsa(ctext)
+        bts = integer_to_bytes(payload, self.mod.bit_length()).lstrip(b"\x00")
+        return bts.decode(enc)
 
     def sign(self, message: str, sha: str = "sha384") -> str:
         """Signs the message using the private key.
@@ -201,8 +250,8 @@ class RSAPrivKey(RSAKey):
         tld_algid = translate.decode(algid, asn1Spec=rfc8017.DigestAlgorithm())
         payload = {"digestAlgorithm": tld_algid, "digest": hashed}
         tld = translate.decode(payload, asn1Spec=rfc8017.DigestInfo())
-        encoded = int.from_bytes(encoder.encode(tld), byteorder="big")
-        signature = _encrypt(encoded, self)
+        encoded = bytes_to_integer(encoder.encode(tld))
+        signature = self.c_rsa(encoded)
         return b64_enc(signature, self.mod.bit_length())
 
     def export(self, file: pathlib.Path) -> None:
@@ -214,6 +263,8 @@ class RSAPrivKey(RSAKey):
         Args:
             file: The file to export to.
         """
+        if not self.p or not self.q:
+            raise NotImplementedError("Due to lack of specifications CRT-less key export is currently not supported.")
         interkey = {
             "version": 0,
             "modulus": self.mod,
@@ -259,8 +310,8 @@ class RSAPrivKey(RSAKey):
                    keydata["prime2"], keydata["exponent1"], keydata["exponent2"], keydata["coefficient"])
 
     @classmethod
-    def generate(cls, size: int, pub_exp: int =65537) -> "RSAPrivKey":
-        """Generates a RSA Private Key, and it's respective Public Key.
+    def generate(cls, size: int, pub_exp: int = 65537) -> "RSAPrivKey":
+        """Generates an RSA Private Key, and it's respective Public Key.
 
         Generates a whole RSA Keypair within the RSAPrivKey instance.
 
@@ -326,71 +377,31 @@ def write_pem(file: pathlib.Path, subtype: str, data: bytes) -> None:
         f.write(curr_type[1] + "\n")
 
 
-def _encrypt(plaintext: int, key: RSAKey) -> int:
-    """Performs core RSA encryption.
-
-    Placed as a separate function to allow for easier global enhancement to encryption protocol.
-    If a private key is provided this acts as a signature, if a public key is provided, as the name suggest this will
-    be the colloquial encryption.
+def bytes_to_integer(msg: bytes) -> int:
+    """Converts a byte string to an integer in accordance to preset procedures.
 
     Args:
-        plaintext: The int-marshalled plaintext to encrypt
-        key: The RSA key to use
+        msg: The bytes (AKA Octet String) to convert.
 
     Returns:
-        The encrypted plaintext
+        The representative integer.
     """
-    return pow(plaintext, key.expo, key.mod)
+    return int.from_bytes(msg, byteorder="big", signed=False)
 
 
-def _decrypt(ciphertext: int, key: RSAKey) -> int:
-    """Performs core RSA decryption.
-
-    Placed as a separate function to allow for easier expansion if we later add padded-signing options.
-    If a public key is provided this acts as a verification of signature, if a private key is provided as the name
-    suggest a standard decryption occurs.
+def integer_to_bytes(msg: int, fixed_bits: int) -> bytes:
+    """Converts an integer to a string, using a fixed-length byte representation.
 
     Args:
-        ciphertext: The int-marshalled ciphertext to be decrypted.
-        key: The RSA key to use.
+        msg: The integer to unmarshal.
+        fixed_bits: The target length of the byte string in bits.
 
     Returns:
-        The decrypted message.
+        The representative bytes. (AKA Octet String)
     """
-    return pow(ciphertext, key.expo, key.mod)
+    fixed_bytes = (fixed_bits + 7) // 8
 
-
-def marshal_str(msg: str, enc: str = "utf-8") -> int:
-    """Marshals a specified message to an int.
-
-    Due to the predominant use of english we just use UTF-8 rather than 16, for both good handling of any non-english
-    characters (unlike ASCII) and moderately decent at storing data effectively.
-
-    Args:
-        msg: The message to marshal into an int.
-        enc: The encoding to use. Default is "utf-8".
-
-    Returns:
-        int: The marshalled message.
-    """
-    encd = msg.encode(enc)
-    return int.from_bytes(encd, byteorder="big")
-
-
-def unmarshal_int(msg: int, enc: str = "utf-8") -> str:
-    """Unmarshal a specified message from an int.
-
-    The inverse of the `marshal_str` function above. Not much more to say.
-
-    Args:
-        msg: The message to unmarshal from an int.
-        enc: The encoding to use. Default is "utf-8".
-
-    Returns:
-        str: The unmarshalled message.
-    """
-    decd = msg.to_bytes((msg.bit_length() + 7) // 8, byteorder="big")
-    return str(decd.decode(enc))
+    return msg.to_bytes(fixed_bytes, byteorder="big", signed=False)
 
 
 def b64_enc(msg: int, msg_size: int) -> str:
@@ -403,8 +414,7 @@ def b64_enc(msg: int, msg_size: int) -> str:
     Returns:
         A base64 encoded string.
     """
-    bvtesize = (msg_size + 7) // 8
-    return base64.b64encode(msg.to_bytes(bvtesize, "big", signed=False)).decode("ascii")
+    return base64.b64encode(integer_to_bytes(msg, msg_size)).decode("ascii")
 
 
 def b64_dec(msg: str) -> int:
@@ -416,4 +426,4 @@ def b64_dec(msg: str) -> int:
     Returns:
         The decoded int.
     """
-    return int.from_bytes(base64.b64decode(msg.encode("ascii")), "big", signed=False)
+    return bytes_to_integer(base64.b64decode(msg.encode("ascii")))

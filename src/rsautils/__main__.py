@@ -43,6 +43,7 @@ needs = {
 
 
 class SpecPrint:
+
     def __init__(self, mode: bool):
         self.mode = mode
 
