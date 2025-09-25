@@ -1,16 +1,11 @@
 ## Testing Document
 ### Coverage
-| Name                         |   Stmts |  Miss | Branch | BrPart |   Cover |
-|------------------------------|--------:|------:|-------:|-------:|--------:|
-| src\rsautils\\_\_init\_\_.py |      10 |     0 |      0 |      0 |    100% |
-| src\rsautils\keygen.py       |     124 |     0 |     64 |      1 |     99% |
-| src\rsautils\placeholders.py |       9 |     9 |      2 |      0 |      0% |
-| src\rsautils\rsa.py          |     128 |     0 |     12 |      0 |    100% |
-| **TOTAL**                    | **271** | **9** | **78** |  **1** | **97%** |
-Note the following:
- - `placeholders.py` is not currently used and may be removed
- - The `keygen.py` Partial will be revised soon.
- - One issue is sometimes in Miller-Robin testing we miss one branch/line if the probability avoids it.
+| Name                         |   Stmts |  Miss | Branch | BrPart |    Cover |
+|------------------------------|--------:|------:|-------:|-------:|---------:|
+| src\rsautils\\_\_init\_\_.py |      10 |     0 |      0 |      0 |     100% |
+| src\rsautils\keygen.py       |     124 |     0 |     64 |      0 |     100% |
+| src\rsautils\rsa.py          |     145 |     0 |     22 |      0 |     100% |
+| **TOTAL**                    | **279** | **0** | **86** |  **0** | **100%** |
 
 ### What was tested?
 We tested every function in `keygen.py` for correctness and reliability over small and representative
@@ -27,6 +22,6 @@ python `cryptography` library for that as well as exporting to template PKCS1 pu
 and PKCS8 private key files.
 
 ### Test Reproduction
-All fo the tests can be reproduced using the information placed in the repository, outside of the
-issues present due to the probabilistic nature of the Miller-Rabin algorithm but they should remain consistent
+All fo the tests can be reproduced using the information placed in the repository, outside the
+issues present due to the probabilistic nature of the Miller-Rabin algorithm, but they should remain consistent
 if not always cover all the branches in the function.

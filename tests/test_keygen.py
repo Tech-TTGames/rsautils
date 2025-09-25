@@ -241,10 +241,19 @@ def test_miller_rabin(n, expected):
     assert keygen._miller_rabin(n, 5) == expected
 
 
+def test_miller_rabin_cover_branch(mocker):
+    mocker.patch('secrets.randbelow', return_value=0)
+
+    assert keygen._miller_rabin(w=561, iters=1) is False
+
+
 @pytest.mark.parametrize("n,expected", base_primetest_cases + large_primetest_cases + rsa_composites, ids=id_generator)
 def test_check_prime(n, expected):
     assert keygen.check_prime(n) == expected
 
+@pytest.mark.parametrize("n,expected", base_primetest_cases)
+def test_check_prime_specified(n, expected):
+    assert keygen.check_prime(n, 1) == expected
 
 @pytest.mark.parametrize("size", test_sizes)
 def test_generate_probable_prime_size(size):
