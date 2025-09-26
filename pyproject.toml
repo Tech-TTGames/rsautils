@@ -2,7 +2,7 @@
 name = "rsautils"
 version = "0.0.1-rc1"
 description = "Some funny things where I try to do some RSA stuff. Experimental and no warranty regarding security."
-license = { text = "EPL-2.0" }
+license = "EPL-2.0"
 authors = [
     {name = "Tech-TTGames",email = "50541739+Tech-TTGames@users.noreply.github.com"}
 ]

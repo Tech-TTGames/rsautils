@@ -10,6 +10,8 @@ Typical usage example:
     c = pk.pub.encrypt("Hi there!")
     r = pk.decrypt(c)
 """
+# Copyright (c) 2025-present Tech. TTGames
+# SPDX-License-Identifier: EPL-2.0
 import base64
 import hashlib
 import pathlib
@@ -17,6 +19,7 @@ import pathlib
 from pyasn1.codec.der import decoder
 from pyasn1.codec.der import encoder
 from pyasn1.codec.native import decoder as translate
+from pyasn1.codec.native import encoder as encode
 from pyasn1.type import univ
 from pyasn1_modules import rfc5208
 from pyasn1_modules import rfc8017
@@ -55,6 +58,7 @@ class RSAKey:
     def __init__(self, mod: int, expo: int) -> None:
         self.mod = mod
         self.expo = expo
+        self.bsize = (self.mod.bit_length() + 7) // 8
 
     def c_rsa(self, message: int) -> int:
         """Performs core RSA operation. (Encrypt/Decrypt/Sign/Verify).
@@ -94,7 +98,7 @@ class RSAPubKey(RSAKey):
         """
         enco = bytes_to_integer(message.encode(enc))
         ciphertext = self.c_rsa(enco)
-        return b64_enc(ciphertext, self.mod.bit_length())
+        return b64_enc(ciphertext, self.bsize)
 
     def verify(self, message: str, signature: str) -> bool:
         """Verify the signature of the message.
@@ -111,7 +115,7 @@ class RSAPubKey(RSAKey):
         """
         signature_int = b64_dec(signature)
         decr_int = self.c_rsa(signature_int)
-        rec_bytes = integer_to_bytes(decr_int, self.mod.bit_length()).lstrip(b"\x00")
+        rec_bytes = integer_to_bytes(decr_int, self.bsize).lstrip(b"\x00")
         payload, _ = decoder.decode(rec_bytes, asn1Spec=rfc8017.DigestInfo())
         hasher = HASH_OID[payload["digestAlgorithm"]["algorithm"]]
         hashd = payload["digest"]
@@ -144,7 +148,8 @@ class RSAPubKey(RSAKey):
         """
         payload = read_pem(file, "PKCS1_PUB")
         keydata, _ = decoder.decode(payload, asn1Spec=rfc8017.RSAPublicKey())
-        return cls(keydata["modulus"], keydata["publicExponent"])
+        pykeyd = encode.encode(keydata)
+        return cls(pykeyd["modulus"], pykeyd["publicExponent"])
 
 
 class RSAPrivKey(RSAKey):
@@ -235,7 +240,7 @@ class RSAPrivKey(RSAKey):
         """
         ctext = b64_dec(message)
         payload = self.c_rsa(ctext)
-        bts = integer_to_bytes(payload, self.mod.bit_length()).lstrip(b"\x00")
+        bts = integer_to_bytes(payload, self.bsize).lstrip(b"\x00")
         return bts.decode(enc)
 
     def sign(self, message: str, sha: str = "sha384") -> str:
@@ -258,7 +263,7 @@ class RSAPrivKey(RSAKey):
         tld = translate.decode(payload, asn1Spec=rfc8017.DigestInfo())
         encoded = bytes_to_integer(encoder.encode(tld))
         signature = self.c_rsa(encoded)
-        return b64_enc(signature, self.mod.bit_length())
+        return b64_enc(signature, self.bsize)
 
     def export(self, file: pathlib.Path) -> None:
         """Exports the RSA Private Key to a file.
@@ -312,8 +317,9 @@ class RSAPrivKey(RSAKey):
         keydata, _ = decoder.decode(decdata["privateKey"], asn1Spec=rfc8017.RSAPrivateKey())
         if keydata["version"] != 0:
             raise IOError("Multi-prime keys are not supported.")
-        return cls(keydata["modulus"], keydata["publicExponent"], keydata["privateExponent"], keydata["prime1"],
-                   keydata["prime2"], keydata["exponent1"], keydata["exponent2"], keydata["coefficient"])
+        pykeyd = encode.encode(keydata)
+        return cls(pykeyd["modulus"], pykeyd["publicExponent"], pykeyd["privateExponent"], pykeyd["prime1"],
+                   pykeyd["prime2"], pykeyd["exponent1"], pykeyd["exponent2"], pykeyd["coefficient"])
 
     @classmethod
     def generate(cls, size: int, pub_exp: int = 65537) -> "RSAPrivKey":
@@ -395,19 +401,17 @@ def bytes_to_integer(msg: bytes) -> int:
     return int.from_bytes(msg, byteorder="big", signed=False)
 
 
-def integer_to_bytes(msg: int, fixed_bits: int) -> bytes:
+def integer_to_bytes(msg: int, fixedlen: int) -> bytes:
     """Converts an integer to a string, using a fixed-length byte representation.
 
     Args:
         msg: The integer to unmarshal.
-        fixed_bits: The target length of the byte string in bits.
+        fixedlen: The target length of the byte string.
 
     Returns:
         The representative bytes. (AKA Octet String)
     """
-    fixed_bytes = (fixed_bits + 7) // 8
-
-    return msg.to_bytes(fixed_bytes, byteorder="big", signed=False)
+    return msg.to_bytes(fixedlen, byteorder="big", signed=False)
 
 
 def b64_enc(msg: int, msg_size: int) -> str:
