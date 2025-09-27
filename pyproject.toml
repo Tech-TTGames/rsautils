@@ -1,6 +1,6 @@
 [project]
 name = "rsautils"
-version = "0.0.1-rc1"
+version = "0.0.1"
 description = "Some funny things where I try to do some RSA stuff. Experimental and no warranty regarding security."
 license = "EPL-2.0"
 authors = [

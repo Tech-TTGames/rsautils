@@ -2,7 +2,6 @@
 # Copyright (c) 2025-present Tech. TTGames
 # SPDX-License-Identifier: EPL-2.0
 import binascii
-import itertools
 import pathlib
 
 from cryptography.hazmat.primitives import serialization
@@ -11,6 +10,7 @@ import pytest
 
 import rsautils
 import rsautils.rsa as rsau
+from rsautils.rsa import HASH_TLL
 
 TARGET_SIZES = [1024, 2048, 3072, 4096]
 e = 65537
@@ -118,24 +118,34 @@ def test_public_export(keysize, tmp_path):
 
 
 @pytest.mark.parametrize("keysize", TARGET_SIZES)
-def test_encrypt_decrypt(keysize):
+@pytest.mark.parametrize("hashf", rsau.HASH_TLL.keys())
+@pytest.mark.parametrize("crt", [True, False])
+def test_encrypt_decrypt(keysize, hashf, crt):
     template_key, _ = known_keys[keysize]
-    pubkey, priv = localize_keys(template_key)
-    ciphtext = pubkey.encrypt(standard_payload)
+    pubkey, priv = localize_keys(template_key, crt)
+    hlen = HASH_TLL[hashf][2]
+    max_len = pubkey.bsize - 2 * (hlen + 1)
+    if max_len <= 0:
+        pytest.skip(f"Key size {keysize} is too small for {hashf}.")
+    payload = standard_payload.encode("utf-8")[:max_len]
+    ciphtext = pubkey.encrypt(payload, hashf=hashf)
     cleartext = priv.decrypt(ciphtext)
-    assert cleartext == standard_payload
+    assert cleartext == payload
 
 
 @pytest.mark.parametrize("keysize", TARGET_SIZES)
-def test_encrypt_decrypt_noncrt(keysize):
-    template_key, _ = known_keys[keysize]
-    pubkey, priv = localize_keys(template_key, crt=False)
-    ciphtext = pubkey.encrypt(standard_payload)
-    cleartext = priv.decrypt(ciphtext)
-    assert cleartext == standard_payload
+@pytest.mark.parametrize("crt", [True, False])
+def test_encrypt_decrypt_academic(keysize, crt):
+    with pytest.warns(RuntimeWarning, match="Academic encryption is unsecure! Please use with care."):
+        template_key, _ = known_keys[keysize]
+        pubkey, priv = localize_keys(template_key, crt=crt)
+        ciphtext = pubkey.encrypt(standard_payload.encode("utf-8"), academic=True)
+        cleartext = priv.decrypt(ciphtext).decode("utf-8")
+        assert cleartext == standard_payload
 
 
-@pytest.mark.parametrize("keysize,sha", itertools.product(TARGET_SIZES, rsau.HASH_TLL.keys()))
+@pytest.mark.parametrize("keysize", TARGET_SIZES)
+@pytest.mark.parametrize("sha", rsau.HASH_TLL.keys())
 def test_sign_verify(keysize, sha):
     template_key, _ = known_keys[keysize]
     pubkey, priv = localize_keys(template_key)
@@ -143,7 +153,8 @@ def test_sign_verify(keysize, sha):
     assert pubkey.verify(standard_payload, signature)
 
 
-@pytest.mark.parametrize("keysize,flow", itertools.product(TARGET_SIZES, [-1, 1]))
+@pytest.mark.parametrize("keysize", TARGET_SIZES)
+@pytest.mark.parametrize("flow", [-1, 1])
 def test_overflow_underflow_c_rsa(keysize, flow):
     template_key, _ = known_keys[keysize]
     pubkey, priv = localize_keys(template_key)

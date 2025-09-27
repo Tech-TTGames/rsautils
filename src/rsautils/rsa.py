@@ -14,27 +14,33 @@ Typical usage example:
 # SPDX-License-Identifier: EPL-2.0
 import base64
 import hashlib
+from math import ceil
 import pathlib
+from secrets import token_bytes
+import warnings
 
+from pyasn1 import error
 from pyasn1.codec.der import decoder
 from pyasn1.codec.der import encoder
 from pyasn1.codec.native import encoder as localize
+from pyasn1.type import namedtype
 from pyasn1.type import univ
+from pyasn1_modules import rfc4055
 from pyasn1_modules import rfc5208
 from pyasn1_modules import rfc8017
 
 from rsautils import keygen
 
 HASH_TLL = {
-    "sha256": (hashlib.sha256, rfc8017.id_sha256),
-    "sha384": (hashlib.sha384, rfc8017.id_sha384),
-    "sha512": (hashlib.sha512, rfc8017.id_sha512),
+    "sha256": (hashlib.sha256, rfc8017.id_sha256, 32, 2**61 - 1),
+    "sha384": (hashlib.sha384, rfc8017.id_sha384, 48, 2**125 - 1),
+    "sha512": (hashlib.sha512, rfc8017.id_sha512, 64, 2**125 - 1),
 }
 
 HASH_OID = {
-    rfc8017.id_sha256: hashlib.sha256,
-    rfc8017.id_sha384: hashlib.sha384,
-    rfc8017.id_sha512: hashlib.sha512,
+    rfc8017.id_sha256: ("sha256", rfc4055.rSAES_OAEP_SHA256_Identifier),
+    rfc8017.id_sha384: ("sha384", rfc4055.rSAES_OAEP_SHA384_Identifier),
+    rfc8017.id_sha512: ("sha512", rfc4055.rSAES_OAEP_SHA512_Identifier),
 }
 
 PEM_TYPES = {
@@ -42,6 +48,17 @@ PEM_TYPES = {
     "PKCS1_PUB": ("-----BEGIN RSA PUBLIC KEY-----", "-----END RSA PUBLIC KEY-----"),
     "PKCS8": ("-----BEGIN PRIVATE KEY-----", "-----END PRIVATE KEY-----")
 }
+
+# No real OID exists for pure RSAEP, so we extend the "baseline" rsaEncryption (PKCS v1.5 padded) to branch 0
+id_RSAES_pure = rfc8017.rsaEncryption + (0,)
+
+
+class RSAMessage(univ.Sequence):
+    """Due to the unfortunate fact that no RSA-based encryption wrapper exists we make our own!"""
+    componentType = namedtype.NamedTypes(
+        namedtype.NamedType("encryptionAlgorithm", rfc8017.AlgorithmIdentifier()),
+        namedtype.NamedType("encryptedData", univ.OctetString()),
+    )
 
 
 class RSAKey:
@@ -86,19 +103,66 @@ class RSAPubKey(RSAKey):
     But provides the general functions expected of a public key.
     """
 
-    def encrypt(self, message: str, enc: str = "utf-8") -> str:
+    def enc_oaep(self, message: bytes, label: bytes = b"", hashf: str = "sha384") -> bytes:
+        """Encrypts the message according to the RSAES-OAEP algorithm.
+
+        Args:
+            message: Message to be encrypted
+            label: Optional label for the message
+            hashf: Hash function (Implemented for sha256, sha384, sha512)
+
+        Returns:
+            Padded and encrypted message
+
+        Raises:
+            ValueError: If label or message too long for the hash function.
+        """
+        fun, _, hlen, hcap = HASH_TLL[hashf]
+        if len(label) > hcap:
+            raise ValueError("Label too long for the specified hash function")
+        if len(message) > self.bsize - 2 * (hlen + 1):
+            raise ValueError("Message too long for the specified hash function")
+        lh = fun(label).digest()
+        pad = b"\x00" * (self.bsize - len(message) - 2 * (hlen + 1))
+        db: bytes = lh + pad + b"\x01" + message
+        seed = token_bytes(hlen)
+        db_msk = mgf1(seed, self.bsize - hlen - 1, hashf)
+        mdb = xorbytes(db, db_msk)
+        seed_msk = mgf1(mdb, hlen, hashf)
+        mseed = xorbytes(seed, seed_msk)
+        em = bytes_to_integer(b"\x00" + mseed + mdb)
+        cm = self.c_rsa(em)
+        return integer_to_bytes(cm, self.bsize)
+
+    def encrypt(self, message: bytes, label: bytes = b"", hashf: str = "sha384", academic: bool = False) -> bytes:
         """Use the public key to encrypt the message.
 
         Args:
             message: The message to encrypt.
-            enc: The encoding standard to use.
+            label: Optional label for the message. Used to authenticate the message during decryption.
+            hashf: Hash function (Implemented for sha256, sha384, sha512)
+            academic: If true, use academic encryption.
+                Warning! Unsecure!
 
         Returns:
             Base64 encoded encrypted message.
         """
-        enco = bytes_to_integer(message.encode(enc))
-        ciphertext = self.c_rsa(enco)
-        return b64_enc(ciphertext, self.bsize)
+        if academic:
+            warnings.warn("Academic encryption is unsecure! Please use with care.", RuntimeWarning)
+            enco = bytes_to_integer(message)
+            ciphertext = integer_to_bytes(self.c_rsa(enco), self.bsize)
+            enc_id = rfc8017.AlgorithmIdentifier()
+            enc_id["algorithm"] = id_RSAES_pure
+            enc_id["parameters"] = univ.Null("")
+        else:
+            ident = HASH_OID[HASH_TLL[hashf][1]][1]
+            ciphertext = self.enc_oaep(message, label, hashf)
+            enc_id = ident
+        pld = RSAMessage()
+        pld["encryptionAlgorithm"] = enc_id
+        pld["encryptedData"] = ciphertext
+        encoded = encoder.encode(pld)
+        return base64.b64encode(encoded)
 
     def verify(self, message: str, signature: str) -> bool:
         """Verify the signature of the message.
@@ -115,11 +179,25 @@ class RSAPubKey(RSAKey):
         """
         signature_int = b64_dec(signature)
         decr_int = self.c_rsa(signature_int)
-        rec_bytes = integer_to_bytes(decr_int, self.bsize).lstrip(b"\x00")
-        payload, _ = decoder.decode(rec_bytes, asn1Spec=rfc8017.DigestInfo())
-        hasher = HASH_OID[payload["digestAlgorithm"]["algorithm"]]
-        hashd = payload["digest"]
-        return hasher(message.encode()).digest() == hashd
+        rec_bytes = integer_to_bytes(decr_int, self.bsize)
+        if rec_bytes[0:2] != b"\x00\x01":
+            return False
+        rec_bytes = rec_bytes[2:]
+        try:
+            li = rec_bytes.index(b"\x00")
+        except ValueError:
+            return False
+        ps = rec_bytes[0:li]
+        if not ps or not all(b == 0xff for b in ps) or len(ps) < 8:
+            return False
+        en_payload = rec_bytes[li + 1:]
+        try:
+            payload, _ = decoder.decode(en_payload, asn1Spec=rfc8017.DigestInfo())
+            hasher = HASH_TLL[HASH_OID[payload["digestAlgorithm"]["algorithm"]][0]][0]
+            hashd = payload["digest"]
+            return hasher(message.encode()).digest() == hashd
+        except (error.PyAsn1Error, KeyError):
+            return False
 
     def export(self, file: pathlib.Path) -> None:
         """Export the Public RSA key to file.
@@ -227,22 +305,77 @@ class RSAPrivKey(RSAKey):
         m = m_2 + self.q * h
         return m
 
-    def decrypt(self, message: str, enc: str = "utf-8") -> str:
+    def oaep_decrypt(self, ciphertext: bytes, label: bytes = b"", hashf: str = "sha384") -> bytes:
+        """Decrypts the message according to the RSAES-OAEP algorithm.
+
+        Args:
+            ciphertext: Message to be decrypted.
+            label: Optional label for the message
+            hashf: Hash function (Implemented for sha256, sha384, sha512)
+
+        Returns:
+            Decrypted message
+
+        Raises:
+            RuntimeError: If decryption fails.
+        """
+        fun, _, hlen, hcap = HASH_TLL[hashf]
+        if len(label) > hcap:
+            raise RuntimeError("Label too long for specified hash function.")
+        if len(ciphertext) != self.bsize:
+            raise RuntimeError("Message does not match expected length.")
+        if self.bsize < 2 * (hlen + 1):
+            raise RuntimeError("Message too long for specified hash function.")
+        ci = bytes_to_integer(ciphertext)
+        m = self.c_rsa(ci)
+        em = integer_to_bytes(m, self.bsize)
+        lh = fun(label).digest()
+        valid = True
+        if em[0:1] != b"\x00":
+            valid = False
+        mseed = em[1:hlen + 1]
+        mdb = em[hlen + 1:]
+        seed_msk = mgf1(mdb, hlen, hashf)
+        seed = xorbytes(mseed, seed_msk)
+        db_msk = mgf1(seed, self.bsize - hlen - 1, hashf)
+        db = xorbytes(mdb, db_msk)
+        if db[0:hlen] != lh:
+            valid = False
+        mrkr = None
+        for by in range(hlen, len(db)):
+            if db[by:by + 1] == b"\x01" and mrkr is None:
+                mrkr = by
+            if db[by:by + 1] != b"\x00" and mrkr is None:
+                valid = False
+        if mrkr is None or not valid:
+            raise RuntimeError("Decryption error.")
+        return db[mrkr + 1:]
+
+    def decrypt(self, message: bytes, label: bytes = b"") -> bytes:
         """Decrypts the message using the private key.
 
         Runs standard RSA decryption on the provided message.
 
         Args:
             message: Base64 encoded message to decrypt
-            enc: The encoding to use.
+            label: Optional label for the message to authenticate validity.
 
         Returns:
             The decrypted message.
         """
-        ctext = b64_dec(message)
-        payload = self.c_rsa(ctext)
-        bts = integer_to_bytes(payload, self.bsize).lstrip(b"\x00")
-        return bts.decode(enc)
+        ctext = base64.b64decode(message)
+        pld, _ = decoder.decode(ctext, asn1Spec=RSAMessage())
+        ctx = pld["encryptedData"]
+        if pld["encryptionAlgorithm"]["algorithm"] == id_RSAES_pure:
+            payload = self.c_rsa(bytes_to_integer(ctx))
+            bts = integer_to_bytes(payload, self.bsize).lstrip(b"\x00")
+        elif pld["encryptionAlgorithm"]["algorithm"] == rfc8017.id_RSAES_OAEP:
+            params, _ = decoder.decode(pld["encryptionAlgorithm"]["parameters"], asn1Spec=rfc8017.RSAES_OAEP_params())
+            hashf = HASH_OID[params["hashFunc"]["algorithm"]][0]
+            bts = self.oaep_decrypt(ctx, label, hashf)
+        else:
+            raise RuntimeError("Unknown encryption algorithm.")
+        return bts
 
     def sign(self, message: str, sha: str = "sha384") -> str:
         """Signs the message using the private key.
@@ -256,7 +389,7 @@ class RSAPrivKey(RSAKey):
         Returns:
             The base64 encoded message signature.
         """
-        hasher, ident = HASH_TLL[sha]
+        hasher, ident, _, _ = HASH_TLL[sha]
         hashed = hasher(message.encode()).digest()
         algid = rfc8017.DigestAlgorithm()
         algid["algorithm"] = ident
@@ -264,8 +397,12 @@ class RSAPrivKey(RSAKey):
         payload = rfc8017.DigestInfo()
         payload["digestAlgorithm"] = algid
         payload["digest"] = hashed
-        encoded = bytes_to_integer(encoder.encode(payload))
-        signature = self.c_rsa(encoded)
+        encoded = encoder.encode(payload)
+        if self.bsize < len(encoded) + 11:
+            raise RuntimeError("Hash function too large for current key.")
+        ps = b"\xFF" * (self.bsize - len(encoded) - 3)
+        em = bytes_to_integer(b"\x00\x01" + ps + b"\x00" + encoded)
+        signature = self.c_rsa(em)
         return b64_enc(signature, self.bsize)
 
     def export(self, file: pathlib.Path) -> None:
@@ -441,3 +578,45 @@ def b64_dec(msg: str) -> int:
         The decoded int.
     """
     return bytes_to_integer(base64.b64decode(msg.encode("ascii")))
+
+
+def xorbytes(a: bytes, b: bytes) -> bytes:
+    """XOR bitwise for bytes.
+
+    Requires two byte strings of equal length.
+
+    Args:
+        a: byte string
+        b: byte string
+
+    Returns:
+        xor byte string
+    """
+    return bytes(a ^ b for a, b in zip(a, b, strict=True))
+
+
+def mgf1(mgfseed: bytes, masklen: int, hashf: str = "sha384") -> bytes:
+    """The PKCS#1 v2.2 Mask Generation Function 1.
+
+    Implemented according to the spec, does what says on the tin, generates a mask based on provided data,
+    using the specified hash function.
+
+    Args:
+        mgfseed: Seed for mask generation
+        masklen: Intended length of mask
+        hashf: Hash function (Implemented for sha256, sha384, sha512)
+
+    Returns:
+        The mask in form of bytes of length masklen.
+
+    Raises:
+        ValueError: If mask too long for the combination of values.
+    """
+    fun, _, hlen, _ = HASH_TLL[hashf]
+    if masklen > 2**32 * hlen:
+        raise ValueError("Mask too long for the specified hash function")
+    t = b""
+    for cnt in range(ceil(masklen / hlen)):
+        c = integer_to_bytes(cnt, 4)
+        t += fun(mgfseed + c).digest()
+    return t[:masklen]

@@ -27,7 +27,9 @@ help_dict: dict[str, tuple[str, list[str] | type | None, tuple[bool, typing.Any]
     "public_key": ("Location of the public key file", pathlib.Path, (False, None)),
     "private_key": ("Location of the private key file", pathlib.Path, (False, None)),
     "message": ("Message or path to file containing payload. If Path start with `P:`", str, (False, None)),
-    "encoding": ("Payload encoding", ["utf-8", "utf-16", "ascii"], (False, "utf-8")),
+    "label": ("Ecrypted payload label. Used to verify during decryption.", str, (True, "")),
+    "encoding": ("Payload encoding", ["utf-8", "utf-16", "ascii"], (True, "utf-8")),
+    "academic": ("Whether to use academic encryption. Warning! Unsecure.", bool, (True, False)),
     "keygen": ("Key generation utility", None, (False, None)),
     "keysize": ("Size of key in bits.", ["2048", "3072", "4096"], (False, "3072")),
     "pub_exponent": ("Exponent for public key", int, (True, 65537)),
@@ -36,13 +38,14 @@ help_dict: dict[str, tuple[str, list[str] | type | None, tuple[bool, typing.Any]
     "sign": ("Signature utility", None, (False, None)),
     "sha": ("Specific SHA algorithm to use", ["sha256", "sha384", "sha512"], (True, "sha384")),
     "verify": ("Signature Verification utility", None, (False, None)),
-    "signature": ("The signature to validate against the payload and public certificate.", str, (False, None))
+    "signature": ("The signature to validate against the payload and public certificate.", str, (False, None)),
+    "overwrite": ("Overwrite specified destination files if they exist?", str, ["Y", "N"], (False, "N")),
 }
 
 needs = {
     "keygen": ("public_key", "private_key", "keysize", "pub_exponent"),
-    "encrypt": ("public_key", "message", "encoding"),
-    "decrypt": ("private_key", "message", "encoding"),
+    "encrypt": ("public_key", "message", "label", "sha", "academic", "encoding"),
+    "decrypt": ("private_key", "message", "label", "encoding"),
     "sign": ("private_key", "message", "sha"),
     "verify": ("public_key", "message", "signature")
 }
@@ -66,6 +69,10 @@ payloads = argparse.ArgumentParser(add_help=False)
 payloads.add_argument("--message", type=str, help=help_dict["message"][0])
 encp = argparse.ArgumentParser(add_help=False)
 encp.add_argument("--encoding", "-e", type=str, choices=help_dict["encoding"][1], help=help_dict["encoding"][0])
+sha = argparse.ArgumentParser(add_help=False)
+sha.add_argument("--sha", "-s", type=str, choices=help_dict["sha"][1], help=help_dict["sha"][0])
+label = argparse.ArgumentParser(add_help=False)
+label.add_argument("--label", "-l", type=str, choices=help_dict["label"][1], help=help_dict["label"][0])
 corep = argparse.ArgumentParser(prog="rsautils")
 corep.add_argument("--version", "-v", action="version", version=f"%(prog)s {rsautils.__version__}")
 corep.add_argument("--non-interactive", "-n", action="store_true", help="Enable non-interactive mode")
@@ -75,14 +82,15 @@ commands = corep.add_subparsers(dest="subcommand", title="Subcommands")
 keygen = commands.add_parser("keygen", parents=[privkey, pubkey], help=help_dict["keygen"][0])
 keygen.add_argument("--keysize", type=str, choices=help_dict["keysize"][1], help=help_dict["keysize"][0])
 keygen.add_argument("--pub-exponent", type=int, help=help_dict["pub_exponent"][0])
+keygen.add_argument("--overwrite", "-o", action="store_const", const="Y", help=help_dict["overwrite"][0])
 
-encrypt = commands.add_parser("encrypt", parents=[pubkey, payloads, encp], help=help_dict["encrypt"][0])
-decrypt = commands.add_parser("decrypt", parents=[privkey, payloads, encp], help=help_dict["decrypt"][0])
+encrypt = commands.add_parser("encrypt", parents=[pubkey, payloads, label, sha, encp], help=help_dict["encrypt"][0])
+encrypt.add_argument("--academic", "-A", action="store_true", help=help_dict["academic"][0])
+decrypt = commands.add_parser("decrypt", parents=[privkey, payloads, label, encp], help=help_dict["decrypt"][0])
 
-sign = commands.add_parser("sign", parents=[privkey, payloads], help=help_dict["sign"][0])
-sign.add_argument("--sha", "-s", type=str, choices=help_dict["sha"][1], help=help_dict["sha"][0])
+sign = commands.add_parser("sign", parents=[privkey, payloads, sha], help=help_dict["sign"][0])
 verify = commands.add_parser("verify", parents=[pubkey, payloads], help=help_dict["verify"][0])
-verify.add_argument("signature", type=str, help=help_dict["signature"][0])
+verify.add_argument("--signature", "-S", type=str, help=help_dict["signature"][0])
 
 
 def checkmodes(arg: str, mode: tuple[bool, bool]):
@@ -170,6 +178,13 @@ def main():
     pspr("\nInput Complete! Executing...")
     match args.subcommand:
         case "keygen":
+            if args.private_key.exists() or args.public_key.exists():
+                rs = getattr(args, "overwrite", None)
+                if rs is None:
+                    rs = choice_handler("overwrite", pstatus, pspr)
+                if rs == "N":
+                    print("Destination private or public key already exists!")
+                    return
             rpk = rsautils.RSAPrivKey.generate(int(args.keysize), args.pub_exponent)
             rpk.export(args.private_key)
             rpk.pub.export(args.public_key)
@@ -177,13 +192,16 @@ def main():
         case "encrypt":
             args.message = check_message(args.message, args.encoding)
             rpu = rsautils.RSAPubKey.import_key(args.public_key)
-            ciph = rpu.encrypt(args.message, args.encoding)
+            encm, enlb = args.message.encode(args.encoding), args.label.encode(args.encoding)
+            ciph = rpu.encrypt(encm, enlb, args.sha, args.academic)
             pspr("Ciphertext:")
-            print(ciph)
+            print(ciph.decode("ascii"))
         case "decrypt":
-            args.message = check_message(args.message, args.encoding)
+            args.message = check_message(args.message, "ascii")
             rpk = rsautils.RSAPrivKey.import_key(args.private_key)
-            clear = rpk.decrypt(args.message, args.encoding)
+            encm, enlb = args.message.encode("ascii"), args.label.encode(args.encoding)
+            clear = rpk.decrypt(encm, enlb)
+            clear = clear.decode(args.encoding)
             pspr("Cleartext:")
             print(clear)
         case "sign":

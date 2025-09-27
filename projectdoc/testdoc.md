@@ -1,11 +1,15 @@
 ## Testing Document
 ### Coverage
-| Name                         |   Stmts |  Miss | Branch | BrPart |    Cover |
-|------------------------------|--------:|------:|-------:|-------:|---------:|
-| src\rsautils\\_\_init\_\_.py |      10 |     0 |      0 |      0 |     100% |
-| src\rsautils\keygen.py       |     124 |     0 |     64 |      0 |     100% |
-| src\rsautils\rsa.py          |     145 |     0 |     22 |      0 |     100% |
-| **TOTAL**                    | **279** | **0** | **86** |  **0** | **100%** |
+| Name                         |   Stmts |   Miss |  Branch | BrPart |   Cover |
+|------------------------------|--------:|-------:|--------:|-------:|--------:|
+| src\rsautils\\_\_init\_\_.py |      10 |      0 |       0 |      0 |    100% |
+| src\rsautils\experimental.py |       6 |      6 |       0 |      0 |      0% |
+| src\rsautils\keygen.py       |     124 |      0 |      64 |      0 |    100% |
+| src\rsautils\rsa.py          |     268 |     18 |      60 |     14 |     90% |
+| **TOTAL**                    | **408** | **24** | **124** | **14** | **93%** |
+
+ - Note: `experimental.py` is intentionally untested.
+ - OAEP and PKCSv1.5 Sign Tests pending
 
 ### What was tested?
 We tested every function in `keygen.py` for correctness and reliability over small and representative
