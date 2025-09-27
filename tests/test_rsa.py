@@ -1,11 +1,12 @@
-# pylint: disable=protected-access,missing-module-docstring
+# pylint: disable=missing-module-docstring
 # Copyright (c) 2025-present Tech. TTGames
 # SPDX-License-Identifier: EPL-2.0
 import binascii
+import base64
 import pathlib
 
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives import serialization, hashes
+from cryptography.hazmat.primitives.asymmetric import rsa, padding
 import pytest
 
 import rsautils
@@ -32,6 +33,15 @@ def localize_keys(pk: rsa.RSAPrivateKey, crt: bool = True) -> tuple[rsau.RSAPubK
         pkey = rsau.RSAPrivKey(pubs.n, pubs.e, privs.d)
     pubk = rsau.RSAPubKey(pubs.n, pubs.e)
     return pubk, pkey
+
+
+def capload(hashf: str, keysz: int):
+    """Returns a capped payload in bytes."""
+    hlen = HASH_TLL[hashf][2]
+    max_len = keysz - 2 * (hlen + 1)
+    if max_len <= 0:
+        pytest.skip(f"Key size {keysz} is too small for {hashf}.")
+    return standard_payload.encode("utf-8")[:max_len]
 
 
 def assert_pkeys_equal(rsautils_key: rsau.RSAPrivKey, crypto_key: rsa.RSAPrivateKey) -> None:
@@ -116,6 +126,28 @@ def test_public_export(keysize, tmp_path):
         interkey = serialization.load_pem_public_key(fi.read())
     assert interkey.public_numbers() == pubs
 
+@pytest.mark.parametrize("keysize", TARGET_SIZES)
+@pytest.mark.parametrize("hashf", rsau.HASH_TLL.keys())
+def test_encrypt_oaep(keysize, hashf):
+    template_key, _ = known_keys[keysize]
+    pubkey, _ = localize_keys(template_key)
+    payload = capload(hashf, pubkey.bsize)
+    ciphtext = pubkey.enc_oaep(payload, hashf=hashf)
+    cr_hashf = getattr(hashes, hashf.upper())
+    dec = template_key.decrypt(ciphtext, padding.OAEP(mgf=padding.MGF1(algorithm=cr_hashf()),algorithm=cr_hashf(),label=None))
+    assert dec == payload
+
+@pytest.mark.parametrize("keysize", TARGET_SIZES)
+@pytest.mark.parametrize("hashf", rsau.HASH_TLL.keys())
+@pytest.mark.parametrize("crt", [True, False])
+def test_decrypt_oaep(keysize, hashf, crt):
+    template_key, _ = known_keys[keysize]
+    _, priv = localize_keys(template_key, crt=crt)
+    payload = capload(hashf, priv.bsize)
+    cr_hashf = getattr(hashes, hashf.upper())
+    ciphtext = template_key.public_key().encrypt(payload, padding.OAEP(mgf=padding.MGF1(algorithm=cr_hashf()),algorithm=cr_hashf(),label=None))
+    dec = priv.oaep_decrypt(ciphtext, hashf=hashf)
+    assert dec == payload
 
 @pytest.mark.parametrize("keysize", TARGET_SIZES)
 @pytest.mark.parametrize("hashf", rsau.HASH_TLL.keys())
@@ -123,11 +155,7 @@ def test_public_export(keysize, tmp_path):
 def test_encrypt_decrypt(keysize, hashf, crt):
     template_key, _ = known_keys[keysize]
     pubkey, priv = localize_keys(template_key, crt)
-    hlen = HASH_TLL[hashf][2]
-    max_len = pubkey.bsize - 2 * (hlen + 1)
-    if max_len <= 0:
-        pytest.skip(f"Key size {keysize} is too small for {hashf}.")
-    payload = standard_payload.encode("utf-8")[:max_len]
+    payload = capload(hashf, pubkey.bsize)
     ciphtext = pubkey.encrypt(payload, hashf=hashf)
     cleartext = priv.decrypt(ciphtext)
     assert cleartext == payload
@@ -143,6 +171,26 @@ def test_encrypt_decrypt_academic(keysize, crt):
         cleartext = priv.decrypt(ciphtext).decode("utf-8")
         assert cleartext == standard_payload
 
+@pytest.mark.parametrize("keysize", TARGET_SIZES)
+@pytest.mark.parametrize("hashf", rsau.HASH_TLL.keys())
+@pytest.mark.parametrize("crt", [True, False])
+def test_sign(keysize, hashf, crt):
+    template_key, _ = known_keys[keysize]
+    _, priv = localize_keys(template_key, crt=crt)
+    payload = capload(hashf, priv.bsize)
+    signature = base64.b64decode(priv.sign(payload.decode(), sha=hashf))
+    cr_hashf = getattr(hashes, hashf.upper())
+    template_key.public_key().verify(signature, payload, padding.PKCS1v15(), cr_hashf())
+
+@pytest.mark.parametrize("keysize", TARGET_SIZES)
+@pytest.mark.parametrize("hashf", rsau.HASH_TLL.keys())
+def test_verify(keysize, hashf):
+    template_key, _ = known_keys[keysize]
+    pubkey, _ = localize_keys(template_key)
+    payload = capload(hashf, pubkey.bsize)
+    cr_hashf = getattr(hashes, hashf.upper())
+    signature = template_key.sign(payload, padding.PKCS1v15(), cr_hashf())
+    assert pubkey.verify(payload.decode("utf-8"), base64.b64encode(signature).decode("utf-8"))
 
 @pytest.mark.parametrize("keysize", TARGET_SIZES)
 @pytest.mark.parametrize("sha", rsau.HASH_TLL.keys())

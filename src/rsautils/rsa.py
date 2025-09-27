@@ -1,6 +1,6 @@
 """Provides core RSA functionalities, such as encryption, decryption, signing and verification.
 
-Facilitates core RSA, currently solely under "textbook" RSA conditions. Handles the general key handling as well as
+Facilitates core RSA, both under OAEP and academic RSA. Handles the general key handling as well as
 some supporting functions such as key import/export and miscellaneous preset functions to handle encoding and
 marshalling.
 
@@ -560,7 +560,7 @@ def b64_enc(msg: int, msg_size: int) -> str:
 
     Args:
         msg: The message to encode.
-        msg_size: The size of the encoded message in bits.
+        msg_size: The size of the encoded message in bytes.
 
     Returns:
         A base64 encoded string.
