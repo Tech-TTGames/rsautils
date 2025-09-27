@@ -1,17 +1,19 @@
 # pylint: disable=missing-module-docstring
 # Copyright (c) 2025-present Tech. TTGames
 # SPDX-License-Identifier: EPL-2.0
-import binascii
 import base64
+import binascii
 import pathlib
 
-from cryptography.hazmat.primitives import serialization, hashes
-from cryptography.hazmat.primitives.asymmetric import rsa, padding
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.primitives.asymmetric import rsa
 import pytest
 
 import rsautils
-import rsautils.rsa as rsau
 from rsautils.rsa import HASH_TLL
+import rsautils.rsa as rsau
 
 TARGET_SIZES = [1024, 2048, 3072, 4096]
 e = 65537
@@ -126,6 +128,7 @@ def test_public_export(keysize, tmp_path):
         interkey = serialization.load_pem_public_key(fi.read())
     assert interkey.public_numbers() == pubs
 
+
 @pytest.mark.parametrize("keysize", TARGET_SIZES)
 @pytest.mark.parametrize("hashf", rsau.HASH_TLL.keys())
 def test_encrypt_oaep(keysize, hashf):
@@ -134,8 +137,10 @@ def test_encrypt_oaep(keysize, hashf):
     payload = capload(hashf, pubkey.bsize)
     ciphtext = pubkey.enc_oaep(payload, hashf=hashf)
     cr_hashf = getattr(hashes, hashf.upper())
-    dec = template_key.decrypt(ciphtext, padding.OAEP(mgf=padding.MGF1(algorithm=cr_hashf()),algorithm=cr_hashf(),label=None))
+    dec = template_key.decrypt(ciphtext,
+                               padding.OAEP(mgf=padding.MGF1(algorithm=cr_hashf()), algorithm=cr_hashf(), label=None))
     assert dec == payload
+
 
 @pytest.mark.parametrize("keysize", TARGET_SIZES)
 @pytest.mark.parametrize("hashf", rsau.HASH_TLL.keys())
@@ -145,9 +150,11 @@ def test_decrypt_oaep(keysize, hashf, crt):
     _, priv = localize_keys(template_key, crt=crt)
     payload = capload(hashf, priv.bsize)
     cr_hashf = getattr(hashes, hashf.upper())
-    ciphtext = template_key.public_key().encrypt(payload, padding.OAEP(mgf=padding.MGF1(algorithm=cr_hashf()),algorithm=cr_hashf(),label=None))
+    ciphtext = template_key.public_key().encrypt(
+        payload, padding.OAEP(mgf=padding.MGF1(algorithm=cr_hashf()), algorithm=cr_hashf(), label=None))
     dec = priv.oaep_decrypt(ciphtext, hashf=hashf)
     assert dec == payload
+
 
 @pytest.mark.parametrize("keysize", TARGET_SIZES)
 @pytest.mark.parametrize("hashf", rsau.HASH_TLL.keys())
@@ -171,6 +178,7 @@ def test_encrypt_decrypt_academic(keysize, crt):
         cleartext = priv.decrypt(ciphtext).decode("utf-8")
         assert cleartext == standard_payload
 
+
 @pytest.mark.parametrize("keysize", TARGET_SIZES)
 @pytest.mark.parametrize("hashf", rsau.HASH_TLL.keys())
 @pytest.mark.parametrize("crt", [True, False])
@@ -182,6 +190,7 @@ def test_sign(keysize, hashf, crt):
     cr_hashf = getattr(hashes, hashf.upper())
     template_key.public_key().verify(signature, payload, padding.PKCS1v15(), cr_hashf())
 
+
 @pytest.mark.parametrize("keysize", TARGET_SIZES)
 @pytest.mark.parametrize("hashf", rsau.HASH_TLL.keys())
 def test_verify(keysize, hashf):
@@ -191,6 +200,7 @@ def test_verify(keysize, hashf):
     cr_hashf = getattr(hashes, hashf.upper())
     signature = template_key.sign(payload, padding.PKCS1v15(), cr_hashf())
     assert pubkey.verify(payload.decode("utf-8"), base64.b64encode(signature).decode("utf-8"))
+
 
 @pytest.mark.parametrize("keysize", TARGET_SIZES)
 @pytest.mark.parametrize("sha", rsau.HASH_TLL.keys())
