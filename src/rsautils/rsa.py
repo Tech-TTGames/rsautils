@@ -18,8 +18,7 @@ import pathlib
 
 from pyasn1.codec.der import decoder
 from pyasn1.codec.der import encoder
-from pyasn1.codec.native import decoder as translate
-from pyasn1.codec.native import encoder as encode
+from pyasn1.codec.native import encoder as localize
 from pyasn1.type import univ
 from pyasn1_modules import rfc5208
 from pyasn1_modules import rfc8017
@@ -31,6 +30,7 @@ HASH_TLL = {
     "sha384": (hashlib.sha384, rfc8017.id_sha384),
     "sha512": (hashlib.sha512, rfc8017.id_sha512),
 }
+
 HASH_OID = {
     rfc8017.id_sha256: hashlib.sha256,
     rfc8017.id_sha384: hashlib.sha384,
@@ -129,9 +129,10 @@ class RSAPubKey(RSAKey):
         Args:
             file: The file to export the public key to.
         """
-        keydata = {"modulus": self.mod, "publicExponent": self.expo}
-        translated = translate.decode(keydata, asn1Spec=rfc8017.RSAPublicKey())
-        encdata = encoder.encode(translated)
+        keydata = rfc8017.RSAPublicKey()
+        keydata["modulus"] = self.mod
+        keydata["publicExponent"] = self.expo
+        encdata = encoder.encode(keydata)
         write_pem(file, "PKCS1_PUB", encdata)
 
     @classmethod
@@ -148,7 +149,7 @@ class RSAPubKey(RSAKey):
         """
         payload = read_pem(file, "PKCS1_PUB")
         keydata, _ = decoder.decode(payload, asn1Spec=rfc8017.RSAPublicKey())
-        pykeyd = encode.encode(keydata)
+        pykeyd = localize.encode(keydata)
         return cls(pykeyd["modulus"], pykeyd["publicExponent"])
 
 
@@ -257,11 +258,13 @@ class RSAPrivKey(RSAKey):
         """
         hasher, ident = HASH_TLL[sha]
         hashed = hasher(message.encode()).digest()
-        algid = {"algorithm": ident, "parameters": univ.Null("")}
-        tld_algid = translate.decode(algid, asn1Spec=rfc8017.DigestAlgorithm())
-        payload = {"digestAlgorithm": tld_algid, "digest": hashed}
-        tld = translate.decode(payload, asn1Spec=rfc8017.DigestInfo())
-        encoded = bytes_to_integer(encoder.encode(tld))
+        algid = rfc8017.DigestAlgorithm()
+        algid["algorithm"] = ident
+        algid["parameters"] = univ.Null("")
+        payload = rfc8017.DigestInfo()
+        payload["digestAlgorithm"] = algid
+        payload["digest"] = hashed
+        encoded = bytes_to_integer(encoder.encode(payload))
         signature = self.c_rsa(encoded)
         return b64_enc(signature, self.bsize)
 
@@ -276,24 +279,25 @@ class RSAPrivKey(RSAKey):
         """
         if not self.p or not self.q:
             raise NotImplementedError("Due to lack of specifications CRT-less key export is currently not supported.")
-        interkey = {
-            "version": 0,
-            "modulus": self.mod,
-            "publicExponent": self.pub.expo,
-            "privateExponent": self.expo,
-            "prime1": self.p,
-            "prime2": self.q,
-            "exponent1": self.exp1,
-            "exponent2": self.exp2,
-            "coefficient": self.coeff,
-        }
-        translated = translate.decode(interkey, asn1Spec=rfc8017.RSAPrivateKey())
-        encoded = encoder.encode(translated)
-        pkalgo = {"algorithm": rfc8017.rsaEncryption, "parameters": univ.Null("")}
-        tl_pkalgo = translate.decode(pkalgo, asn1Spec=rfc5208.AlgorithmIdentifier())
-        pkraw = {"version": 0, "privateKeyAlgorithm": tl_pkalgo, "privateKey": encoded}
-        f_translate = translate.decode(pkraw, asn1Spec=rfc5208.PrivateKeyInfo())
-        final = encoder.encode(f_translate)
+        interkey = rfc8017.RSAPrivateKey()
+        interkey["version"] = 0
+        interkey["modulus"] = self.mod
+        interkey["publicExponent"] = self.pub.expo
+        interkey["privateExponent"] = self.expo
+        interkey["prime1"] = self.p
+        interkey["prime2"] = self.q
+        interkey["exponent1"] = self.exp1
+        interkey["exponent2"] = self.exp2
+        interkey["coefficient"] = self.coeff
+        encoded = encoder.encode(interkey)
+        pkalgo = rfc5208.AlgorithmIdentifier()
+        pkalgo["algorithm"] = rfc8017.rsaEncryption
+        pkalgo["parameters"] = univ.Null("")
+        pkraw = rfc5208.PrivateKeyInfo()
+        pkraw["version"] = 0
+        pkraw["privateKeyAlgorithm"] = pkalgo
+        pkraw["privateKey"] = encoded
+        final = encoder.encode(pkraw)
         write_pem(file, "PKCS8", final)
 
     @classmethod
@@ -317,7 +321,7 @@ class RSAPrivKey(RSAKey):
         keydata, _ = decoder.decode(decdata["privateKey"], asn1Spec=rfc8017.RSAPrivateKey())
         if keydata["version"] != 0:
             raise IOError("Multi-prime keys are not supported.")
-        pykeyd = encode.encode(keydata)
+        pykeyd = localize.encode(keydata)
         return cls(pykeyd["modulus"], pykeyd["publicExponent"], pykeyd["privateExponent"], pykeyd["prime1"],
                    pykeyd["prime2"], pykeyd["exponent1"], pykeyd["exponent2"], pykeyd["coefficient"])
 
