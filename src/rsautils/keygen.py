@@ -201,7 +201,7 @@ def check_prime(candidate: int, iters: None | int = None, n: int = 10000) -> boo
     Args:
         candidate: The candidate prime to test.
         iters: Number of Miller-Rabin iterations to perform.
-            If not provided will use defaults as per the FIPS 186-5 Table B.1.
+            If not provided will use defaults as per the FIPS 186-5 Appendix C.1
         n: The number up to which to generate primes. Defaults to 10000.
             Passed to `_trial_division()`.
 
@@ -213,9 +213,17 @@ def check_prime(candidate: int, iters: None | int = None, n: int = 10000) -> boo
     if not _trial_division(candidate, n):
         return False
     if iters is None:
-        iters = 5
-        if candidate.bit_length() > 1536:
-            iters = 4
+        if candidate.bit_length() <= 512:
+            iters = 40
+        elif candidate.bit_length() <= 1024:
+            iters = 56
+        elif candidate.bit_length() <= 1536:
+            iters = 64
+        elif candidate.bit_length() <= 2048:
+            iters = 70
+        else:
+            iters = 74
+
     return _miller_rabin(candidate, iters)
 
 

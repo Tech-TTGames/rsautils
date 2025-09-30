@@ -12,7 +12,6 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 import pytest
 
 import rsautils
-from rsautils.rsa import HASH_TLL
 import rsautils.rsa as rsau
 
 TARGET_SIZES = [1024, 2048, 3072, 4096]
@@ -39,7 +38,7 @@ def localize_keys(pk: rsa.RSAPrivateKey, crt: bool = True) -> tuple[rsau.RSAPubK
 
 def capload(hashf: str, keysz: int):
     """Returns a capped payload in bytes."""
-    hlen = HASH_TLL[hashf][2]
+    hlen = rsau.HASH_TLL[hashf][2]
     max_len = keysz - 2 * (hlen + 1)
     if max_len <= 0:
         pytest.skip(f"Key size {keysz} is too small for {hashf}.")
@@ -185,10 +184,9 @@ def test_encrypt_decrypt_academic(keysize, crt):
 def test_sign(keysize, hashf, crt):
     template_key, _ = known_keys[keysize]
     _, priv = localize_keys(template_key, crt=crt)
-    payload = capload(hashf, priv.bsize)
-    signature = base64.b64decode(priv.sign(payload.decode(), sha=hashf))
+    signature = base64.b64decode(priv.sign(standard_payload, sha=hashf))
     cr_hashf = getattr(hashes, hashf.upper())
-    template_key.public_key().verify(signature, payload, padding.PKCS1v15(), cr_hashf())
+    template_key.public_key().verify(signature, standard_payload.encode("utf-8"), padding.PKCS1v15(), cr_hashf())
 
 
 @pytest.mark.parametrize("keysize", TARGET_SIZES)
@@ -196,10 +194,9 @@ def test_sign(keysize, hashf, crt):
 def test_verify(keysize, hashf):
     template_key, _ = known_keys[keysize]
     pubkey, _ = localize_keys(template_key)
-    payload = capload(hashf, pubkey.bsize)
     cr_hashf = getattr(hashes, hashf.upper())
-    signature = template_key.sign(payload, padding.PKCS1v15(), cr_hashf())
-    assert pubkey.verify(payload.decode("utf-8"), base64.b64encode(signature).decode("utf-8"))
+    signature = template_key.sign(standard_payload.encode("utf-8"), padding.PKCS1v15(), cr_hashf())
+    assert pubkey.verify(standard_payload, base64.b64encode(signature).decode("utf-8"))
 
 
 @pytest.mark.parametrize("keysize", TARGET_SIZES)
