@@ -22,6 +22,7 @@ from typing import Literal, overload
 
 _SMALL_PRIMES: list[int] = []
 _SMALL_PRIMES_CAP: int = 0
+_MINIMUM_PRIME_SEPARATION: int = 100
 
 
 def hash_file(file: pathlib.Path, local: bool = True) -> str:
@@ -249,18 +250,20 @@ def _generate_probable_prime(size: int, pub: int = 65537, prm_p: int | None = No
     ml = 2
     if prm_p is None:
         ml = 1
-    for _ in range(size * 5 * ml):
+    rep_cap = size * 5 * ml
+    for _ in range(rep_cap):
         byts = secrets.randbits(size)
-        # Set first bits to 1 to ensure length.
+        # Set first two bits to 1 to ensure length.
         msk = (1 << size - 1) | (1 << size - 2)
         byts = byts | msk
         # We do not check if byts**2 < (1 << (2 * size - 1)) as the mask ensures it is impossible.
-        if prm_p is not None and abs(prm_p - byts) <= (1 << (size - 100)):
+        if prm_p is not None and abs(prm_p - byts) <= (1 << (size - _MINIMUM_PRIME_SEPARATION)):
             continue
         # If required will move out GCD out of math.
         if math.gcd(byts - 1, pub) == 1 and check_prime(byts):
             return byts
-    raise RuntimeError("Run an improbable amount of loops with no prime found. Check system random number generator.")
+    raise RuntimeError(
+        f"Run an improbable {size * 5 * ml} amount of loops with no prime found. Check system random number generator.")
 
 
 def generate_primes(size: int, pub: int = 65537) -> tuple[int, int]:
