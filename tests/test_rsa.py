@@ -25,6 +25,21 @@ for target in TARGET_SIZES:
         known_keys[target] = (serialization.load_pem_private_key(f.read(), None), loc)
 
 
+@pytest.fixture(scope="module", params=TARGET_SIZES)
+def keyset(request) -> tuple[rsa.RSAPrivateKey, pathlib.Path]:
+    return known_keys[request.param]
+
+
+@pytest.fixture(scope="module", params=rsau.HASH_TLL.keys())
+def hashf(request) -> str:
+    return request.param
+
+
+@pytest.fixture(scope="module", params=[True, False])
+def crt(request) -> bool:
+    return request.param
+
+
 def localize_keys(pk: rsa.RSAPrivateKey, crt: bool = True) -> tuple[rsau.RSAPubKey, rsau.RSAPrivKey]:
     privs = pk.private_numbers()
     pubs = pk.public_key().public_numbers()
@@ -62,7 +77,7 @@ def assert_pkeys_equal(rsautils_key: rsau.RSAPrivKey, crypto_key: rsa.RSAPrivate
 
 @pytest.mark.parametrize("keysize", TARGET_SIZES)
 def test_private_generation(mocker, keysize):
-    template_key, _ = known_keys[keysize]
+    template_key = known_keys[keysize][0]
     pubs = template_key.public_key().public_numbers()
     privs = template_key.private_numbers()
     mocker.patch("rsautils.keygen.generate_key_pair",
@@ -71,9 +86,8 @@ def test_private_generation(mocker, keysize):
     assert_pkeys_equal(reskey, template_key)
 
 
-@pytest.mark.parametrize("keysize", TARGET_SIZES)
-def test_private_import(keysize):
-    template_key, source = known_keys[keysize]
+def test_private_import(keyset):
+    template_key, source = keyset
     reskey = rsau.RSAPrivKey.import_key(source)
     assert_pkeys_equal(reskey, template_key)
 
@@ -85,22 +99,20 @@ def test_private_import_validates(errtp):
         rsautils.RSAPrivKey.import_key(fil)
 
 
-@pytest.mark.parametrize("keysize", TARGET_SIZES)
-def test_public_import(keysize):
-    template_key, source = known_keys[keysize]
+def test_public_import(keyset):
+    template_key, source = keyset
     pubs = template_key.public_key().public_numbers()
     pubkey = rsau.RSAPubKey.import_key(source.with_suffix(".pub"))
     assert pubkey.mod == pubs.n
     assert pubkey.expo == pubs.e
 
 
-@pytest.mark.parametrize("keysize", TARGET_SIZES)
-def test_private_export(keysize, tmp_path):
-    template_key, _ = known_keys[keysize]
+def test_private_export(keyset, tmp_path):
+    template_key, pt = keyset
     pubs = template_key.public_key().public_numbers()
     privs = template_key.private_numbers()
     _, key = localize_keys(template_key)
-    des = tmp_path / f"testkey_{keysize}"
+    des = tmp_path / f"testkey_{pt.name}"
     key.export(des)
     with open(des, "rb") as fi:
         interkey = serialization.load_pem_private_key(fi.read(), None)
@@ -108,31 +120,26 @@ def test_private_export(keysize, tmp_path):
     assert interkey.public_key().public_numbers() == pubs
 
 
-@pytest.mark.parametrize("keysize", TARGET_SIZES)
-def test_private_export_noncrt(keysize, tmp_path):
-    template_key, _ = known_keys[keysize]
-    _, key = localize_keys(template_key, crt=False)
+def test_private_export_noncrt(keyset, tmp_path):
+    _, priv = localize_keys(keyset[0], crt=False)
     with pytest.raises(NotImplementedError):
-        key.export(tmp_path)
+        priv.export(tmp_path)
 
 
-@pytest.mark.parametrize("keysize", TARGET_SIZES)
-def test_public_export(keysize, tmp_path):
-    template_key, _ = known_keys[keysize]
+def test_public_export(keyset, tmp_path):
+    template_key, pt = keyset
     pubs = template_key.public_key().public_numbers()
     key = rsau.RSAPubKey(pubs.n, pubs.e)
-    des = tmp_path / f"testkey_{keysize}.pub"
+    des = tmp_path / f"testkey_{pt.name}.pub"
     key.export(des)
     with open(des, "rb") as fi:
         interkey = serialization.load_pem_public_key(fi.read())
     assert interkey.public_numbers() == pubs
 
 
-@pytest.mark.parametrize("keysize", TARGET_SIZES)
-@pytest.mark.parametrize("hashf", rsau.HASH_TLL.keys())
-def test_encrypt_oaep(keysize, hashf):
-    template_key, _ = known_keys[keysize]
-    pubkey, _ = localize_keys(template_key)
+def test_encrypt_oaep(keyset, hashf):
+    template_key = keyset[0]
+    pubkey = localize_keys(template_key)[0]
     payload = capload(hashf, pubkey.bsize)
     ciphtext = pubkey.enc_oaep(payload, hashf=hashf)
     cr_hashf = getattr(hashes, hashf.upper())
@@ -141,78 +148,58 @@ def test_encrypt_oaep(keysize, hashf):
     assert dec == payload
 
 
-@pytest.mark.parametrize("keysize", TARGET_SIZES)
-@pytest.mark.parametrize("hashf", rsau.HASH_TLL.keys())
-@pytest.mark.parametrize("crt", [True, False])
-def test_decrypt_oaep(keysize, hashf, crt):
-    template_key, _ = known_keys[keysize]
-    _, priv = localize_keys(template_key, crt=crt)
+def test_decrypt_oaep(keyset, hashf, crt):
+    template_key = keyset[0]
+    priv = localize_keys(template_key, crt=crt)[1]
     payload = capload(hashf, priv.bsize)
     cr_hashf = getattr(hashes, hashf.upper())
     ciphtext = template_key.public_key().encrypt(
         payload, padding.OAEP(mgf=padding.MGF1(algorithm=cr_hashf()), algorithm=cr_hashf(), label=None))
-    dec = priv.oaep_decrypt(ciphtext, hashf=hashf)
+    dec = priv.dec_oaep(ciphtext, hashf=hashf)
     assert dec == payload
 
 
-@pytest.mark.parametrize("keysize", TARGET_SIZES)
-@pytest.mark.parametrize("hashf", rsau.HASH_TLL.keys())
-@pytest.mark.parametrize("crt", [True, False])
-def test_encrypt_decrypt(keysize, hashf, crt):
-    template_key, _ = known_keys[keysize]
-    pubkey, priv = localize_keys(template_key, crt)
+def test_encrypt_decrypt(keyset, hashf, crt):
+    pubkey, priv = localize_keys(keyset[0], crt)
     payload = capload(hashf, pubkey.bsize)
     ciphtext = pubkey.encrypt(payload, hashf=hashf)
     cleartext = priv.decrypt(ciphtext)
     assert cleartext == payload
 
 
-@pytest.mark.parametrize("keysize", TARGET_SIZES)
-@pytest.mark.parametrize("crt", [True, False])
-def test_encrypt_decrypt_academic(keysize, crt):
+def test_encrypt_decrypt_academic(keyset, crt):
+    pubkey, priv = localize_keys(keyset[0], crt=crt)
     with pytest.warns(RuntimeWarning, match="Academic encryption is unsecure! Please use with care."):
-        template_key, _ = known_keys[keysize]
-        pubkey, priv = localize_keys(template_key, crt=crt)
         ciphtext = pubkey.encrypt(standard_payload.encode("utf-8"), academic=True)
-        cleartext = priv.decrypt(ciphtext).decode("utf-8")
-        assert cleartext == standard_payload
+    cleartext = priv.decrypt(ciphtext).decode("utf-8")
+    assert cleartext == standard_payload
 
 
-@pytest.mark.parametrize("keysize", TARGET_SIZES)
-@pytest.mark.parametrize("hashf", rsau.HASH_TLL.keys())
-@pytest.mark.parametrize("crt", [True, False])
-def test_sign(keysize, hashf, crt):
-    template_key, _ = known_keys[keysize]
-    _, priv = localize_keys(template_key, crt=crt)
+def test_sign(keyset, hashf, crt):
+    template_key = keyset[0]
+    priv = localize_keys(template_key, crt=crt)[1]
     signature = base64.b64decode(priv.sign(standard_payload, sha=hashf))
     cr_hashf = getattr(hashes, hashf.upper())
     template_key.public_key().verify(signature, standard_payload.encode("utf-8"), padding.PKCS1v15(), cr_hashf())
 
 
-@pytest.mark.parametrize("keysize", TARGET_SIZES)
-@pytest.mark.parametrize("hashf", rsau.HASH_TLL.keys())
-def test_verify(keysize, hashf):
-    template_key, _ = known_keys[keysize]
-    pubkey, _ = localize_keys(template_key)
+def test_verify(keyset, hashf, crt):
+    template_key = keyset[0]
+    pubkey = localize_keys(template_key)[0]
     cr_hashf = getattr(hashes, hashf.upper())
     signature = template_key.sign(standard_payload.encode("utf-8"), padding.PKCS1v15(), cr_hashf())
     assert pubkey.verify(standard_payload, base64.b64encode(signature).decode("utf-8"))
 
 
-@pytest.mark.parametrize("keysize", TARGET_SIZES)
-@pytest.mark.parametrize("sha", rsau.HASH_TLL.keys())
-def test_sign_verify(keysize, sha):
-    template_key, _ = known_keys[keysize]
-    pubkey, priv = localize_keys(template_key)
-    signature = priv.sign(standard_payload, sha)
+def test_sign_verify(keyset, hashf, crt):
+    pubkey, priv = localize_keys(keyset[0], crt=crt)
+    signature = priv.sign(standard_payload, hashf)
     assert pubkey.verify(standard_payload, signature)
 
 
-@pytest.mark.parametrize("keysize", TARGET_SIZES)
 @pytest.mark.parametrize("flow", [-1, 1])
-def test_overflow_underflow_c_rsa(keysize, flow):
-    template_key, _ = known_keys[keysize]
-    pubkey, priv = localize_keys(template_key)
+def test_overflow_underflow_c_rsa(keyset, flow):
+    pubkey, priv = localize_keys(keyset[0])
     with pytest.raises(ValueError):
         priv.c_rsa(priv.mod * flow)
     with pytest.raises(ValueError):

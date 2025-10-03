@@ -149,6 +149,8 @@ class RSAPubKey(RSAKey):
         """
         if academic:
             warnings.warn("Academic encryption is unsecure! Please use with care.", RuntimeWarning)
+            if label:
+                raise ValueError("Label cannot be used with academic encryption")
             enco = bytes_to_integer(message)
             ciphertext = integer_to_bytes(self.c_rsa(enco), self.bsize)
             enc_id = rfc8017.AlgorithmIdentifier()
@@ -305,7 +307,7 @@ class RSAPrivKey(RSAKey):
         m = m_2 + self.q * h
         return m
 
-    def oaep_decrypt(self, ciphertext: bytes, label: bytes = b"", hashf: str = "sha384") -> bytes:
+    def dec_oaep(self, ciphertext: bytes, label: bytes = b"", hashf: str = "sha384") -> bytes:
         """Decrypts the message according to the RSAES-OAEP algorithm.
 
         Args:
@@ -321,16 +323,20 @@ class RSAPrivKey(RSAKey):
         """
         fun, _, hlen, hcap = HASH_TLL[hashf]
         if len(label) > hcap:
-            raise RuntimeError("Label too long for specified hash function.")
+            raise RuntimeError("Label too long for the specified hash function")
+        if len(ciphertext) < 2 * (hlen + 1):
+            raise RuntimeError("Message too short for the specified hash function")
         if len(ciphertext) != self.bsize:
             raise RuntimeError("Message does not match expected length.")
-        if self.bsize < 2 * (hlen + 1):
-            raise RuntimeError("Message too long for specified hash function.")
         ci = bytes_to_integer(ciphertext)
-        m = self.c_rsa(ci)
+        valid = True
+        try:
+            m = self.c_rsa(ci)
+        except ValueError:
+            valid = False
+            m = ci
         em = integer_to_bytes(m, self.bsize)
         lh = fun(label).digest()
-        valid = True
         if em[0:1] != b"\x00":
             valid = False
         mseed = em[1:hlen + 1]
@@ -366,13 +372,13 @@ class RSAPrivKey(RSAKey):
         ctext = base64.b64decode(message)
         pld, _ = decoder.decode(ctext, asn1Spec=RSAMessage())
         ctx = pld["encryptedData"]
-        if pld["encryptionAlgorithm"]["algorithm"] == id_RSAES_pure:
+        if pld["encryptionAlgorithm"]["algorithm"] == id_RSAES_pure and label == b"":
             payload = self.c_rsa(bytes_to_integer(ctx))
             bts = integer_to_bytes(payload, self.bsize).lstrip(b"\x00")
         elif pld["encryptionAlgorithm"]["algorithm"] == rfc8017.id_RSAES_OAEP:
             params, _ = decoder.decode(pld["encryptionAlgorithm"]["parameters"], asn1Spec=rfc8017.RSAES_OAEP_params())
             hashf = HASH_OID[params["hashFunc"]["algorithm"]][0]
-            bts = self.oaep_decrypt(ctx, label, hashf)
+            bts = self.dec_oaep(ctx, label, hashf)
         else:
             raise RuntimeError("Unknown encryption algorithm.")
         return bts

@@ -104,6 +104,11 @@ test_sizes = [
 ]
 
 
+@pytest.fixture(scope="module", params=test_sizes)
+def size(request):
+    return request.param
+
+
 def id_generator(param):
     if isinstance(param, int) and param > 1000000:
         return f"LargeInt-{param.bit_length()}bits"
@@ -231,9 +236,9 @@ def test_import_integrity(local):
         keygen.import_primes(__file__, "NoU", local=local)
 
 
-@pytest.mark.parametrize("num,expected", base_primetest_cases + large_primetest_cases, ids=id_generator)
-def test_trial_division(num, expected):
-    assert keygen._trial_division(num) == expected
+@pytest.mark.parametrize("n,expected", base_primetest_cases + large_primetest_cases, ids=id_generator)
+def test_trial_division(n, expected):
+    assert keygen._trial_division(n) == expected
 
 
 @pytest.mark.parametrize("n,expected", base_primetest_cases + large_primetest_cases + rsa_composites, ids=id_generator)
@@ -257,7 +262,6 @@ def test_check_prime_specified(n, expected):
     assert keygen.check_prime(n, 1) == expected
 
 
-@pytest.mark.parametrize("size", test_sizes)
 def test_generate_probable_prime_size(size):
     size = size // 2
     p = keygen._generate_probable_prime(size)
@@ -266,7 +270,6 @@ def test_generate_probable_prime_size(size):
     assert q.bit_length() == size
 
 
-@pytest.mark.parametrize("size", test_sizes)
 def test_generate_probable_prime_isprime(size):
     size = size // 2
     p = keygen._generate_probable_prime(size)
@@ -275,7 +278,6 @@ def test_generate_probable_prime_isprime(size):
     assert sympy.isprime(q)
 
 
-@pytest.mark.parametrize("size", test_sizes)
 def test_generate_probable_prime_conditions(size):
     size = size // 2
     p = keygen._generate_probable_prime(size)
@@ -286,7 +288,6 @@ def test_generate_probable_prime_conditions(size):
     assert q**2 > (1 << (2 * size - 1))
 
 
-@pytest.mark.parametrize("size", rsa_dict.keys())
 def test_generate_probably_prime_improbable_conditions(mocker, size):
     msk = (1 << (size // 2) - 1) | (1 << (size // 2) - 2)
     p = rsa_dict[size][0] | msk
@@ -308,8 +309,9 @@ def test_generate_probable_prime_faulty(mocker):
         keygen._generate_probable_prime(1024)
 
 
-@pytest.mark.parametrize("size", [2048, 3072, 4096])
 def test_generate_primes_conditions(mocker, size):
+    if size < 2048:
+        pytest.skip("Skipping invalid case.")
     p = rsa_dict[size][0]
     q = rsa_dict[size][1]
     mocker.patch("rsautils.keygen._generate_probable_prime", side_effect=[p, p, q])
@@ -319,14 +321,16 @@ def test_generate_primes_conditions(mocker, size):
     assert keygen._generate_probable_prime.call_count == 3
 
 
-@pytest.mark.parametrize("size,pub", [(1024, None), (2049, None), (2048, 65538), (2048, 2**16 - 1), (2048, 2**256 + 1)])
-def test_generate_primes_validates(size, pub):
+@pytest.mark.parametrize("gnsize,pub", [(1024, None), (2049, None), (2048, 65538), (2048, 2**16 - 1),
+                                        (2048, 2**256 + 1)])
+def test_generate_primes_validates(gnsize, pub):
     with pytest.raises(ValueError):
-        keygen.generate_primes(size, pub)
+        keygen.generate_primes(gnsize, pub)
 
 
-@pytest.mark.parametrize("size", [2048, 3072, 4096])
 def test_generate_key_pair_roundcryption(size):
+    if size < 2048:
+        pytest.skip("Skipping invalid case.")
     pub_key, priv_key = keygen.generate_key_pair(size)
     message = 17092025232642
     ciphertext = pow(message, pub_key[1], pub_key[0])
@@ -334,7 +338,6 @@ def test_generate_key_pair_roundcryption(size):
     assert decrypted == message
 
 
-@pytest.mark.parametrize("size", [2048, 3072, 4096])
 def test_generate_key_pair_functional(mocker, size):
     src_pub = 65537
     src_p, src_q = rsa_dict[size]
