@@ -1,4 +1,4 @@
-# pylint: disable=protected-access,missing-module-docstring
+# pylint: disable=protected-access,missing-module-docstring,redefined-outer-name
 # Copyright (c) 2025-present Tech. TTGames
 # SPDX-License-Identifier: EPL-2.0
 import math
