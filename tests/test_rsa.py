@@ -210,7 +210,7 @@ def test_encrypt_academic_verifies(keyset):
         pubkey.encrypt(standard_payload.encode("utf-8"), b"ALIE", academic=True)
 
 
-def test_decrypt_validates(mocker, keyset, hashf, crt):
+def test_decrypt_validates(mocker, keyset, crt):
     priv = localize_keys(keyset[0], crt=crt)[1]
     # We use dict-like interface for this so for simplicity we provide dicts!
     mocker.patch("rsautils.rsa.decoder.decode",
@@ -240,7 +240,7 @@ def test_sign_validates(mocker, keyset, hashf):
         priv.sign("ABBA", hashf)
 
 
-def test_verify(keyset, hashf, crt):
+def test_verify(keyset, hashf):
     template_key = keyset[0]
     pubkey = localize_keys(template_key)[0]
     cr_hashf = getattr(hashes, hashf.upper())
@@ -310,6 +310,6 @@ def test_pem_read_nonbase64(tmp_path):
 
 def test_mgf1_validates(hashf):
     hlen = rsau.HASH_TLL[hashf][2]
-    seed = b'\x00' * hlen
+    seed = b"\x00" * hlen
     with pytest.raises(ValueError, match="Mask too long for the specified hash function"):
         rsau.mgf1(seed, 2**32 * (hlen + 1), hashf)
