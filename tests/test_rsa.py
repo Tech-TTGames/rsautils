@@ -159,6 +159,34 @@ def test_decrypt_oaep(keyset, hashf, crt):
     assert dec == payload
 
 
+@pytest.mark.parametrize("public", [True, False])
+def test_oaep_actions_validate(mocker, keyset, hashf, public):
+    pubkey, priv = localize_keys(keyset[0])
+    e1, e2, hlen, _ = rsau.HASH_TLL[hashf]
+    fakehcap = pubkey.bsize + 1
+    mocker.patch("rsautils.rsa.HASH_TLL", {hashf: (e1, e2, hlen, fakehcap)})
+    if public:
+        key = pubkey
+        action = key.enc_oaep
+        exp_exception = ValueError
+        val = "long"
+        overflower = b"A" * (key.bsize - 2 * hlen - 1)
+    else:
+        key = priv
+        action = key.dec_oaep
+        exp_exception = RuntimeError
+        val = "short"
+        overflower = b"A" * (2 * (hlen + 1))
+        with pytest.raises(exp_exception, match="Message does not match expected length."):
+            action(overflower, hashf=hashf)
+        overflower = b"A" * (hlen + 1)
+    with pytest.raises(exp_exception, match=f"Message too {val} for the specified hash function"):
+        action(overflower, hashf=hashf)
+    label = b"A" * (fakehcap + 1)
+    with pytest.raises(exp_exception, match="Label too long for the specified hash function"):
+        action(overflower, label, hashf)
+
+
 def test_encrypt_decrypt(keyset, hashf, crt):
     pubkey, priv = localize_keys(keyset[0], crt)
     payload = capload(hashf, pubkey.bsize)
@@ -175,12 +203,41 @@ def test_encrypt_decrypt_academic(keyset, crt):
     assert cleartext == standard_payload
 
 
+def test_encrypt_academic_verifies(keyset):
+    pubkey = localize_keys(keyset[0])[0]
+    with pytest.raises(ValueError, match="Label cannot be used with academic encryption"), pytest.warns(
+            RuntimeWarning, match="Academic encryption is unsecure!"):
+        pubkey.encrypt(standard_payload.encode("utf-8"), b"ALIE", academic=True)
+
+
+def test_decrypt_validates(mocker, keyset, hashf, crt):
+    priv = localize_keys(keyset[0], crt=crt)[1]
+    # We use dict-like interface for this so for simplicity we provide dicts!
+    mocker.patch("rsautils.rsa.decoder.decode",
+                 return_value=({
+                     "encryptedData": None,
+                     "encryptionAlgorithm": {
+                         "algorithm": "Wrong Data."
+                     }
+                 }, None))
+    with pytest.raises(RuntimeError, match="Unknown encryption algorithm."):
+        priv.decrypt(b"")
+
+
 def test_sign(keyset, hashf, crt):
     template_key = keyset[0]
     priv = localize_keys(template_key, crt=crt)[1]
     signature = base64.b64decode(priv.sign(standard_payload, sha=hashf))
     cr_hashf = getattr(hashes, hashf.upper())
     template_key.public_key().verify(signature, standard_payload.encode("utf-8"), padding.PKCS1v15(), cr_hashf())
+
+
+def test_sign_validates(mocker, keyset, hashf):
+    priv = localize_keys(keyset[0])[1]
+    fakeasn1 = b"A" * (priv.bsize - 10)
+    mocker.patch("rsautils.rsa.encoder.encode", return_value=fakeasn1)
+    with pytest.raises(RuntimeError, match="Hash function too large for current key."):
+        priv.sign("ABBA", hashf)
 
 
 def test_verify(keyset, hashf, crt):
@@ -249,3 +306,10 @@ def test_pem_read_nonbase64(tmp_path):
         fi.write("-----END RSA PUBLIC KEY-----\n")
     with pytest.raises(binascii.Error):
         rsau.read_pem(pld, "PKCS1_PUB")
+
+
+def test_mgf1_validates(hashf):
+    hlen = rsau.HASH_TLL[hashf][2]
+    seed = b'\x00' * hlen
+    with pytest.raises(ValueError, match="Mask too long for the specified hash function"):
+        rsau.mgf1(seed, 2**32 * (hlen + 1), hashf)
