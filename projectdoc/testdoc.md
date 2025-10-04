@@ -1,15 +1,11 @@
 ## Testing Document
 ### Coverage
-| Name                         |   Stmts |   Miss |  Branch | BrPart |   Cover |
-|------------------------------|--------:|-------:|--------:|-------:|--------:|
-| src\rsautils\\_\_init\_\_.py |      10 |      0 |       0 |      0 |    100% |
-| src\rsautils\experimental.py |       6 |      6 |       0 |      0 |      0% |
-| src\rsautils\keygen.py       |     132 |      0 |      70 |      0 |    100% |
-| src\rsautils\rsa.py          |     274 |     13 |      62 |      6 |     94% |
-| **TOTAL**                    | **422** | **19** | **132** |  **6** | **95%** |
-
- - Note: `experimental.py` is intentionally untested.
- - OAEP and PKCSv1.5 Sign Tests pending
+| Name                         |   Stmts |  Miss |  Branch | BrPart |    Cover |
+|------------------------------|--------:|------:|--------:|-------:|---------:|
+| src\rsautils\\_\_init\_\_.py |      10 |     0 |       0 |      0 |     100% |
+| src\rsautils\keygen.py       |     132 |     0 |      70 |      0 |     100% |
+| src\rsautils\rsa.py          |     274 |     0 |      62 |      0 |     100% |
+| **TOTAL**                    | **416** | **0** | **132** |  **0** | **100%** |
 
 ### What was tested?
 We tested every function in `keygen.py` for correctness and reliability over small and representative
@@ -20,6 +16,9 @@ checking for end-to-end or interoperability testing rather than providing unit t
 test functions.
 This is due to the overall needs for such approach in encryption, decryption and such justifying our favor
 towards such testing rather than unit tests and the current tests provide sufficient detail to test our implementation.
+
+More specific fail-correctly unit tests have been made for `rsa.py` to expand branch coverage and ensure that all functions
+fail in correct places due to the importance of said failures.
 
 ### Test Inputs
 All test inputs are preset and depending on the test are either known-good lists of the smaller

@@ -9,6 +9,7 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.asymmetric import rsa
+from pyasn1.error import PyAsn1Error
 import pytest
 
 import rsautils
@@ -159,6 +160,30 @@ def test_decrypt_oaep(keyset, hashf, crt):
     assert dec == payload
 
 
+def test_decrypt_oaep_fails(mocker, keyset, crt):
+    pubkey, priv = localize_keys(keyset[0], crt=crt)
+    sha = "sha256"
+    payload = capload(sha, priv.bsize)
+    hshr = hashes.Hash(hashes.SHA256()).finalize()
+    def faux_encrypt(message):
+        return rsau.integer_to_bytes(pubkey.c_rsa(rsau.bytes_to_integer(message)), priv.bsize)
+    with pytest.raises(RuntimeError, match="Decryption error."):
+        priv.dec_oaep(pubkey.enc_oaep(payload, label=b"CORRECT_LABEL", hashf=sha), label=b"INCORRECT_LABEL", hashf=sha)
+    with pytest.raises(RuntimeError, match="Decryption error."):
+        fake = b"\x01" + hshr + b"\x00\x01" + b"\x00" * (priv.bsize - len(hshr) - 3)
+        priv.dec_oaep(faux_encrypt(fake), hashf=sha)
+    with pytest.raises(RuntimeError, match="Decryption error."):
+        fake = b"\x00" + hshr + b"\x00\xAB\x01" + b"\x00" * (priv.bsize - len(hshr) - 4)
+        priv.dec_oaep(faux_encrypt(fake), hashf=sha)
+    with pytest.raises(RuntimeError, match="Decryption error."):
+        fake = b"\x00" + hshr + b"\x00" * (priv.bsize - len(hshr) - 2)
+        priv.dec_oaep(faux_encrypt(fake), hashf=sha)
+    mocker.patch("rsautils.RSAPrivKey.c_rsa", side_effect=ValueError())
+    with pytest.raises(RuntimeError, match="Decryption error."):
+        fake = b"\x00" + hshr + b"\x00\x01" + b"\x00" * (priv.bsize - len(hshr) - 3)
+        priv.dec_oaep(faux_encrypt(fake), hashf=sha)
+
+
 @pytest.mark.parametrize("public", [True, False])
 def test_oaep_actions_validate(mocker, keyset, hashf, public):
     pubkey, priv = localize_keys(keyset[0])
@@ -246,6 +271,32 @@ def test_verify(keyset, hashf):
     cr_hashf = getattr(hashes, hashf.upper())
     signature = template_key.sign(standard_payload.encode("utf-8"), padding.PKCS1v15(), cr_hashf())
     assert pubkey.verify(standard_payload, base64.b64encode(signature).decode("utf-8"))
+
+
+def test_verify_mismatch_fails(keyset):
+    pubkey, priv = localize_keys(keyset[0])
+    correct_signature = priv.sign(standard_payload)
+    assert not pubkey.verify("NONSTANDARDPAYLOAD", correct_signature)
+
+
+def test_verify_format_fails(mocker, keyset):
+    pubkey, priv = localize_keys(keyset[0])
+    correct_signature = priv.sign(standard_payload)
+    mocker.patch("rsautils.rsa.decoder.decode", return_value=({}, None))
+    assert not pubkey.verify(standard_payload, correct_signature)
+    mocker.patch("rsautils.rsa.decoder.decode", side_effect=PyAsn1Error())
+    assert not pubkey.verify(standard_payload, correct_signature)
+
+def test_verify_padding_fails(keyset):
+    pubkey, priv = localize_keys(keyset[0])
+    def faux_sign(by):
+        return rsau.b64_enc(priv.c_rsa(rsau.bytes_to_integer(by)), priv.bsize)
+    fake_signature = faux_sign(b"\x00\x02" + (b"\xff" * (priv.bsize - 2)))
+    assert not pubkey.verify(standard_payload, fake_signature)
+    fake_signature = faux_sign(b"\x00\x01" + (b"\xff" * (priv.bsize - 2)))
+    assert not pubkey.verify(standard_payload, fake_signature)
+    fake_signature = faux_sign(b"\x00\x01\xff\xff\xff\x00" + (b"\xff" * (priv.bsize - 6)))
+    assert not pubkey.verify(standard_payload, fake_signature)
 
 
 def test_sign_verify(keyset, hashf, crt):
