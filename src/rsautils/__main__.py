@@ -27,7 +27,7 @@ help_dict: dict[str, tuple[str, list[str] | type | None, tuple[bool, typing.Any]
     "public_key": ("Location of the public key file", pathlib.Path, (False, None)),
     "private_key": ("Location of the private key file", pathlib.Path, (False, None)),
     "message": ("Message or path to file containing payload. If Path start with `P:`", str, (False, None)),
-    "label": ("Ecrypted payload label. Used to verify during decryption.", str, (True, "")),
+    "label": ("Encrypted payload label. Used to verify during decryption.", str, (True, "")),
     "encoding": ("Payload encoding", ["utf-8", "utf-16", "ascii"], (True, "utf-8")),
     "academic": ("Whether to use academic encryption. Warning! Unsecure.", bool, (True, False)),
     "keygen": ("Key generation utility", None, (False, None)),
@@ -62,9 +62,9 @@ class SpecPrint:
 
 
 pubkey = argparse.ArgumentParser(add_help=False)
-pubkey.add_argument("--public_key", "-s", type=pathlib.Path, help=help_dict["public_key"][0])
+pubkey.add_argument("--public_key", "-p", type=pathlib.Path, help=help_dict["public_key"][0])
 privkey = argparse.ArgumentParser(add_help=False)
-privkey.add_argument("--private_key", "-p", type=pathlib.Path, help=help_dict["private_key"][0])
+privkey.add_argument("--private_key", "-P", type=pathlib.Path, help=help_dict["private_key"][0])
 payloads = argparse.ArgumentParser(add_help=False)
 payloads.add_argument("--message", type=str, help=help_dict["message"][0])
 encp = argparse.ArgumentParser(add_help=False)
@@ -72,7 +72,7 @@ encp.add_argument("--encoding", "-e", type=str, choices=help_dict["encoding"][1]
 sha = argparse.ArgumentParser(add_help=False)
 sha.add_argument("--sha", "-s", type=str, choices=help_dict["sha"][1], help=help_dict["sha"][0])
 label = argparse.ArgumentParser(add_help=False)
-label.add_argument("--label", "-l", type=str, choices=help_dict["label"][1], help=help_dict["label"][0])
+label.add_argument("--label", "-l", type=str, help=help_dict["label"][0])
 corep = argparse.ArgumentParser(prog="rsautils")
 corep.add_argument("--version", "-v", action="version", version=f"%(prog)s {rsautils.__version__}")
 corep.add_argument("--non-interactive", "-n", action="store_true", help="Enable non-interactive mode")
@@ -205,13 +205,13 @@ def main():
             pspr("Cleartext:")
             print(clear)
         case "sign":
-            args.message = check_message(args.message, args.encoding)
+            args.message = check_message(args.message, "utf-8")
             rpk = rsautils.RSAPrivKey.import_key(args.private_key)
             signature = rpk.sign(args.message, args.sha)
             pspr("Signature:")
             print(signature)
         case "verify":
-            args.message = check_message(args.message, args.encoding)
+            args.message = check_message(args.message, "utf-8")
             rpu = rsautils.RSAPubKey.import_key(args.public_key)
             if rpu.verify(args.message, args.signature):
                 pspr("Signature Verified!")
