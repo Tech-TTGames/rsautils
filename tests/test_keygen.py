@@ -11,19 +11,19 @@ import sympy
 
 from rsautils import keygen
 
-location = pathlib.Path(__file__).parent
-expected_primes = {}
+LOCATION = pathlib.Path(__file__).parent
+EXPECTED_PRIMES = {}
 # Load precomputed primes for referencing.
-with open(location / "data" / "primes.txt", encoding="utf-8") as f:
+with open(LOCATION / "data" / "primes.txt", encoding="utf-8") as f:
     primes = f.read().splitlines()[4:-1]
     SMALL_PRIMES = []
     for line in primes:
         SMALL_PRIMES = SMALL_PRIMES + [int(entry) for entry in line.split()]
 
-with open(location / "data" / "rsa_primes.pickle", "rb") as f:
-    rsa_dict = pickle.load(f)
+with open(LOCATION / "data" / "rsa_primes.pickle", "rb") as f:
+    RSA_DICT = pickle.load(f)
 
-base_primetest_cases = [
+BASE_CASES = [
     # Edge Cases (neither)
     (0, False),
     (1, False),
@@ -50,50 +50,50 @@ base_primetest_cases = [
     (52633, False),
 ]
 
-large_primetest_cases = [
+LARGE_CASES = [
     # Current Largest Known Prime
     pytest.param(2**136279841 - 1, True, marks=pytest.mark.extreme, id="LargeInt-MaxPrime"),
     # RSA PRIMES
-    (rsa_dict[1024][0], True),
-    (rsa_dict[1024][1], True),
-    (rsa_dict[2048][0], True),
-    (rsa_dict[2048][1], True),
-    (rsa_dict[3072][0], True),
-    (rsa_dict[3072][1], True),
-    (rsa_dict[4096][0], True),
-    (rsa_dict[4096][1], True),
+    (RSA_DICT[1024][0], True),
+    (RSA_DICT[1024][1], True),
+    (RSA_DICT[2048][0], True),
+    (RSA_DICT[2048][1], True),
+    (RSA_DICT[3072][0], True),
+    (RSA_DICT[3072][1], True),
+    (RSA_DICT[4096][0], True),
+    (RSA_DICT[4096][1], True),
     # RSA non-PRIMES (low multiplier)
-    (rsa_dict[1024][0] * 3, False),
-    (rsa_dict[1024][1] * 3, False),
-    (rsa_dict[2048][0] * 3, False),
-    (rsa_dict[2048][1] * 3, False),
-    (rsa_dict[3072][0] * 3, False),
-    (rsa_dict[3072][1] * 3, False),
-    (rsa_dict[4096][0] * 3, False),
-    (rsa_dict[4096][1] * 3, False)
+    (RSA_DICT[1024][0] * 3, False),
+    (RSA_DICT[1024][1] * 3, False),
+    (RSA_DICT[2048][0] * 3, False),
+    (RSA_DICT[2048][1] * 3, False),
+    (RSA_DICT[3072][0] * 3, False),
+    (RSA_DICT[3072][1] * 3, False),
+    (RSA_DICT[4096][0] * 3, False),
+    (RSA_DICT[4096][1] * 3, False)
 ]
 
-rsa_composites = [
+RSA_COMPOSITE_CASES = [
     # RSA Prime Composites
-    (rsa_dict[1024][0] * rsa_dict[1024][1], False),
-    (rsa_dict[1024][0] * rsa_dict[2048][1], False),
-    (rsa_dict[2048][0] * rsa_dict[2048][1], False),
-    (rsa_dict[2048][0] * rsa_dict[3072][1], False),
-    (rsa_dict[3072][0] * rsa_dict[3072][1], False),
-    (rsa_dict[3072][0] * rsa_dict[4096][1], False),
-    (rsa_dict[4096][0] * rsa_dict[4096][1], False),
+    (RSA_DICT[1024][0] * RSA_DICT[1024][1], False),
+    (RSA_DICT[1024][0] * RSA_DICT[2048][1], False),
+    (RSA_DICT[2048][0] * RSA_DICT[2048][1], False),
+    (RSA_DICT[2048][0] * RSA_DICT[3072][1], False),
+    (RSA_DICT[3072][0] * RSA_DICT[3072][1], False),
+    (RSA_DICT[3072][0] * RSA_DICT[4096][1], False),
+    (RSA_DICT[4096][0] * RSA_DICT[4096][1], False),
     # RSA non-PRIMES (probably)
-    (rsa_dict[1024][0] + 4, False),
-    (rsa_dict[1024][1] + 4, False),
-    (rsa_dict[2048][0] + 4, False),
-    (rsa_dict[2048][1] + 4, False),
-    (rsa_dict[3072][0] + 4, False),
-    (rsa_dict[3072][1] + 4, False),
-    (rsa_dict[4096][0] + 4, False),
-    (rsa_dict[4096][1] + 4, False)
+    (RSA_DICT[1024][0] + 4, False),
+    (RSA_DICT[1024][1] + 4, False),
+    (RSA_DICT[2048][0] + 4, False),
+    (RSA_DICT[2048][1] + 4, False),
+    (RSA_DICT[3072][0] + 4, False),
+    (RSA_DICT[3072][1] + 4, False),
+    (RSA_DICT[4096][0] + 4, False),
+    (RSA_DICT[4096][1] + 4, False)
 ]
 
-test_sizes = [
+TEST_SIZES = [
     1024,
     2048,
     3072,
@@ -104,7 +104,7 @@ test_sizes = [
 ]
 
 
-@pytest.fixture(scope="module", params=test_sizes)
+@pytest.fixture(scope="module", params=TEST_SIZES)
 def size(request):
     return request.param
 
@@ -117,14 +117,14 @@ def id_generator(param):
 
 def get_expected_primes(n):
     """Helper function cutting down from SMALL_PRIMES."""
-    if n not in expected_primes:
+    if n not in EXPECTED_PRIMES:
         expected = []
         for i in SMALL_PRIMES:
             if i > n:
                 break
             expected.append(i)
-        expected_primes[n] = expected
-    return expected_primes[n]
+        EXPECTED_PRIMES[n] = expected
+    return EXPECTED_PRIMES[n]
 
 
 @pytest.mark.parametrize("n", [0, 1, 2, 20, 50, 1000, 5000, 10000])
@@ -236,12 +236,12 @@ def test_import_integrity(local):
         keygen.import_primes(__file__, "NoU", local=local)
 
 
-@pytest.mark.parametrize("n,expected", base_primetest_cases + large_primetest_cases, ids=id_generator)
+@pytest.mark.parametrize("n,expected", BASE_CASES + LARGE_CASES, ids=id_generator)
 def test_trial_division(n, expected):
     assert keygen._trial_division(n) == expected
 
 
-@pytest.mark.parametrize("n,expected", base_primetest_cases + large_primetest_cases + rsa_composites, ids=id_generator)
+@pytest.mark.parametrize("n,expected", BASE_CASES + LARGE_CASES + RSA_COMPOSITE_CASES, ids=id_generator)
 def test_miller_rabin(n, expected):
     assert keygen._miller_rabin(n, 5) == expected
 
@@ -252,12 +252,12 @@ def test_miller_rabin_cover_branch(mocker):
     assert keygen._miller_rabin(w=561, iters=1) is False
 
 
-@pytest.mark.parametrize("n,expected", base_primetest_cases + large_primetest_cases + rsa_composites, ids=id_generator)
+@pytest.mark.parametrize("n,expected", BASE_CASES + LARGE_CASES + RSA_COMPOSITE_CASES, ids=id_generator)
 def test_check_prime(n, expected):
     assert keygen.check_prime(n) == expected
 
 
-@pytest.mark.parametrize("n,expected", base_primetest_cases)
+@pytest.mark.parametrize("n,expected", BASE_CASES)
 def test_check_prime_specified(n, expected):
     assert keygen.check_prime(n, 1) == expected
 
@@ -290,8 +290,8 @@ def test_generate_probable_prime_conditions(size):
 
 def test_generate_probably_prime_improbable_conditions(mocker, size):
     msk = (1 << (size // 2) - 1) | (1 << (size // 2) - 2)
-    p = rsa_dict[size][0] | msk
-    good_q = rsa_dict[size][1] | msk
+    p = RSA_DICT[size][0] | msk
+    good_q = RSA_DICT[size][1] | msk
     bad_q_candidate = p + 2
 
     mocker.patch("secrets.randbits", side_effect=[bad_q_candidate, good_q])
@@ -312,8 +312,8 @@ def test_generate_probable_prime_faulty(mocker):
 def test_generate_primes_conditions(mocker, size):
     if size < 2048:
         pytest.skip("Skipping invalid case.")
-    p = rsa_dict[size][0]
-    q = rsa_dict[size][1]
+    p = RSA_DICT[size][0]
+    q = RSA_DICT[size][1]
     mocker.patch("rsautils.keygen._generate_probable_prime", side_effect=[p, p, q])
     rp, rq = keygen.generate_primes(size)
     assert rp == p
@@ -340,7 +340,7 @@ def test_generate_key_pair_roundcryption(size):
 
 def test_generate_key_pair_functional(mocker, size):
     src_pub = 65537
-    src_p, src_q = rsa_dict[size]
+    src_p, src_q = RSA_DICT[size]
     mocker.patch("rsautils.keygen.generate_primes", return_value=(src_p, src_q))
     (n, pub), (n, d, p, q) = keygen.generate_key_pair(size, src_pub, expose_primes=True)
     assert src_p == p

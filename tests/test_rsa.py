@@ -16,19 +16,18 @@ import rsautils
 import rsautils.rsa as rsau
 
 TARGET_SIZES = [1024, 2048, 3072, 4096]
-e = 65537
-standard_payload = "The quick brown fox jumps over the lazy dog1234567890!@#$%^&*()-_=+[{}];:\\|<>,./?~`'\""
-location = pathlib.Path(__file__).parent
-known_keys = {}
+STANDARD_PAYLOAD = "The quick brown fox jumps over the lazy dog1234567890!@#$%^&*()-_=+[{}];:\\|<>,./?~`'\""
+LOCATION = pathlib.Path(__file__).parent
+KNOWN_KEYS = {}
 for target in TARGET_SIZES:
-    loc = location / "data" / f"rsa_{target}"
+    loc = LOCATION / "data" / f"rsa_{target}"
     with open(loc, "rb") as f:
-        known_keys[target] = (serialization.load_pem_private_key(f.read(), None), loc)
+        KNOWN_KEYS[target] = (serialization.load_pem_private_key(f.read(), None), loc)
 
 
 @pytest.fixture(scope="module", params=TARGET_SIZES)
 def keyset(request) -> tuple[rsa.RSAPrivateKey, pathlib.Path]:
-    return known_keys[request.param]
+    return KNOWN_KEYS[request.param]
 
 
 @pytest.fixture(scope="module", params=rsau.HASH_TLL.keys())
@@ -41,6 +40,20 @@ def crt(request) -> bool:
     return request.param
 
 
+@pytest.fixture(scope="module", params=[True, False])
+def capload(request, hashf, keyset):
+    """Returns a capped payload in bytes."""
+    keysz = keyset[0].key_size // 8
+    hlen = rsau.HASH_TLL[hashf][2]
+    max_len = keysz - 2 * (hlen + 1)
+    if max_len <= 0:
+        pytest.skip(f"Key size {keysz} is too small for {hashf}.")
+    if request.param:
+        return b""
+    encoded = STANDARD_PAYLOAD.encode("utf-8")
+    return (encoded * ((max_len // len(encoded)) + 1))[:max_len]
+
+
 def localize_keys(pk: rsa.RSAPrivateKey, crt: bool = True) -> tuple[rsau.RSAPubKey, rsau.RSAPrivKey]:
     privs = pk.private_numbers()
     pubs = pk.public_key().public_numbers()
@@ -50,15 +63,6 @@ def localize_keys(pk: rsa.RSAPrivateKey, crt: bool = True) -> tuple[rsau.RSAPubK
         pkey = rsau.RSAPrivKey(pubs.n, pubs.e, privs.d)
     pubk = rsau.RSAPubKey(pubs.n, pubs.e)
     return pubk, pkey
-
-
-def capload(hashf: str, keysz: int):
-    """Returns a capped payload in bytes."""
-    hlen = rsau.HASH_TLL[hashf][2]
-    max_len = keysz - 2 * (hlen + 1)
-    if max_len <= 0:
-        pytest.skip(f"Key size {keysz} is too small for {hashf}.")
-    return standard_payload.encode("utf-8")[:max_len]
 
 
 def assert_pkeys_equal(rsautils_key: rsau.RSAPrivKey, crypto_key: rsa.RSAPrivateKey) -> None:
@@ -78,7 +82,7 @@ def assert_pkeys_equal(rsautils_key: rsau.RSAPrivKey, crypto_key: rsa.RSAPrivate
 
 @pytest.mark.parametrize("keysize", TARGET_SIZES)
 def test_private_generation(mocker, keysize):
-    template_key = known_keys[keysize][0]
+    template_key = KNOWN_KEYS[keysize][0]
     pubs = template_key.public_key().public_numbers()
     privs = template_key.private_numbers()
     mocker.patch("rsautils.keygen.generate_key_pair",
@@ -95,7 +99,7 @@ def test_private_import(keyset):
 
 @pytest.mark.parametrize("errtp", ["pkalgo", "pkver", "wrapperver"])
 def test_private_import_validates(errtp):
-    fil = location / "data" / f"lie_{errtp}"
+    fil = LOCATION / "data" / f"lie_{errtp}"
     with pytest.raises(IOError):
         rsautils.RSAPrivKey.import_key(fil)
 
@@ -138,50 +142,51 @@ def test_public_export(keyset, tmp_path):
     assert interkey.public_numbers() == pubs
 
 
-def test_encrypt_oaep(keyset, hashf):
+def test_encrypt_oaep(keyset, hashf, capload):
     template_key = keyset[0]
     pubkey = localize_keys(template_key)[0]
-    payload = capload(hashf, pubkey.bsize)
-    ciphtext = pubkey.enc_oaep(payload, hashf=hashf)
+    ciphtext = pubkey.enc_oaep(capload, hashf=hashf)
     cr_hashf = getattr(hashes, hashf.upper())
     dec = template_key.decrypt(ciphtext,
                                padding.OAEP(mgf=padding.MGF1(algorithm=cr_hashf()), algorithm=cr_hashf(), label=None))
-    assert dec == payload
+    assert dec == capload
 
 
-def test_decrypt_oaep(keyset, hashf, crt):
+def test_decrypt_oaep(keyset, hashf, crt, capload):
     template_key = keyset[0]
     priv = localize_keys(template_key, crt=crt)[1]
-    payload = capload(hashf, priv.bsize)
     cr_hashf = getattr(hashes, hashf.upper())
     ciphtext = template_key.public_key().encrypt(
-        payload, padding.OAEP(mgf=padding.MGF1(algorithm=cr_hashf()), algorithm=cr_hashf(), label=None))
+        capload, padding.OAEP(mgf=padding.MGF1(algorithm=cr_hashf()), algorithm=cr_hashf(), label=None))
     dec = priv.dec_oaep(ciphtext, hashf=hashf)
-    assert dec == payload
+    assert dec == capload
 
 
-def test_decrypt_oaep_fails(mocker, keyset, crt):
+def test_decrypt_oaep_fails(mocker, keyset, crt, hashf, capload):
     pubkey, priv = localize_keys(keyset[0], crt=crt)
-    sha = "sha256"
-    payload = capload(sha, priv.bsize)
-    hshr = hashes.Hash(hashes.SHA256()).finalize()
+    cr_hashf = getattr(hashes, hashf.upper())
+    hshr = hashes.Hash(cr_hashf()).finalize()
+
     def faux_encrypt(message):
         return rsau.integer_to_bytes(pubkey.c_rsa(rsau.bytes_to_integer(message)), priv.bsize)
+
     with pytest.raises(RuntimeError, match="Decryption error."):
-        priv.dec_oaep(pubkey.enc_oaep(payload, label=b"CORRECT_LABEL", hashf=sha), label=b"INCORRECT_LABEL", hashf=sha)
+        priv.dec_oaep(pubkey.enc_oaep(capload, label=b"CORRECT_LABEL", hashf=hashf),
+                      label=b"INCORRECT_LABEL",
+                      hashf=hashf)
     with pytest.raises(RuntimeError, match="Decryption error."):
         fake = b"\x01" + hshr + b"\x00\x01" + b"\x00" * (priv.bsize - len(hshr) - 3)
-        priv.dec_oaep(faux_encrypt(fake), hashf=sha)
+        priv.dec_oaep(faux_encrypt(fake), hashf=hashf)
     with pytest.raises(RuntimeError, match="Decryption error."):
         fake = b"\x00" + hshr + b"\x00\xAB\x01" + b"\x00" * (priv.bsize - len(hshr) - 4)
-        priv.dec_oaep(faux_encrypt(fake), hashf=sha)
+        priv.dec_oaep(faux_encrypt(fake), hashf=hashf)
     with pytest.raises(RuntimeError, match="Decryption error."):
         fake = b"\x00" + hshr + b"\x00" * (priv.bsize - len(hshr) - 2)
-        priv.dec_oaep(faux_encrypt(fake), hashf=sha)
+        priv.dec_oaep(faux_encrypt(fake), hashf=hashf)
     mocker.patch("rsautils.RSAPrivKey.c_rsa", side_effect=ValueError())
     with pytest.raises(RuntimeError, match="Decryption error."):
         fake = b"\x00" + hshr + b"\x00\x01" + b"\x00" * (priv.bsize - len(hshr) - 3)
-        priv.dec_oaep(faux_encrypt(fake), hashf=sha)
+        priv.dec_oaep(faux_encrypt(fake), hashf=hashf)
 
 
 @pytest.mark.parametrize("public", [True, False])
@@ -212,27 +217,26 @@ def test_oaep_actions_validate(mocker, keyset, hashf, public):
         action(overflower, label, hashf)
 
 
-def test_encrypt_decrypt(keyset, hashf, crt):
+def test_encrypt_decrypt(keyset, hashf, crt, capload):
     pubkey, priv = localize_keys(keyset[0], crt)
-    payload = capload(hashf, pubkey.bsize)
-    ciphtext = pubkey.encrypt(payload, hashf=hashf)
+    ciphtext = pubkey.encrypt(capload, hashf=hashf)
     cleartext = priv.decrypt(ciphtext)
-    assert cleartext == payload
+    assert cleartext == capload
 
 
 def test_encrypt_decrypt_academic(keyset, crt):
     pubkey, priv = localize_keys(keyset[0], crt=crt)
     with pytest.warns(RuntimeWarning, match="Academic encryption is unsecure! Please use with care."):
-        ciphtext = pubkey.encrypt(standard_payload.encode("utf-8"), academic=True)
+        ciphtext = pubkey.encrypt(STANDARD_PAYLOAD.encode("utf-8"), academic=True)
     cleartext = priv.decrypt(ciphtext).decode("utf-8")
-    assert cleartext == standard_payload
+    assert cleartext == STANDARD_PAYLOAD
 
 
 def test_encrypt_academic_verifies(keyset):
     pubkey = localize_keys(keyset[0])[0]
     with pytest.raises(ValueError, match="Label cannot be used with academic encryption"), pytest.warns(
             RuntimeWarning, match="Academic encryption is unsecure!"):
-        pubkey.encrypt(standard_payload.encode("utf-8"), b"ALIE", academic=True)
+        pubkey.encrypt(STANDARD_PAYLOAD.encode("utf-8"), b"ALIE", academic=True)
 
 
 def test_decrypt_validates(mocker, keyset, crt):
@@ -249,12 +253,12 @@ def test_decrypt_validates(mocker, keyset, crt):
         priv.decrypt(b"")
 
 
-def test_sign(keyset, hashf, crt):
+def test_sign(keyset, hashf, crt, capload):
     template_key = keyset[0]
     priv = localize_keys(template_key, crt=crt)[1]
-    signature = base64.b64decode(priv.sign(standard_payload, sha=hashf))
+    signature = base64.b64decode(priv.sign(capload.decode("utf-8"), sha=hashf))
     cr_hashf = getattr(hashes, hashf.upper())
-    template_key.public_key().verify(signature, standard_payload.encode("utf-8"), padding.PKCS1v15(), cr_hashf())
+    template_key.public_key().verify(signature, capload, padding.PKCS1v15(), cr_hashf())
 
 
 def test_sign_validates(mocker, keyset, hashf):
@@ -265,44 +269,47 @@ def test_sign_validates(mocker, keyset, hashf):
         priv.sign("ABBA", hashf)
 
 
-def test_verify(keyset, hashf):
+def test_verify(keyset, hashf, capload):
     template_key = keyset[0]
     pubkey = localize_keys(template_key)[0]
     cr_hashf = getattr(hashes, hashf.upper())
-    signature = template_key.sign(standard_payload.encode("utf-8"), padding.PKCS1v15(), cr_hashf())
-    assert pubkey.verify(standard_payload, base64.b64encode(signature).decode("utf-8"))
+    signature = template_key.sign(capload, padding.PKCS1v15(), cr_hashf())
+    assert pubkey.verify(capload.decode("utf-8"), base64.b64encode(signature).decode("utf-8"))
 
 
 def test_verify_mismatch_fails(keyset):
     pubkey, priv = localize_keys(keyset[0])
-    correct_signature = priv.sign(standard_payload)
+    correct_signature = priv.sign(STANDARD_PAYLOAD)
     assert not pubkey.verify("NONSTANDARDPAYLOAD", correct_signature)
 
 
 def test_verify_format_fails(mocker, keyset):
     pubkey, priv = localize_keys(keyset[0])
-    correct_signature = priv.sign(standard_payload)
+    correct_signature = priv.sign(STANDARD_PAYLOAD)
     mocker.patch("rsautils.rsa.decoder.decode", return_value=({}, None))
-    assert not pubkey.verify(standard_payload, correct_signature)
+    assert not pubkey.verify(STANDARD_PAYLOAD, correct_signature)
     mocker.patch("rsautils.rsa.decoder.decode", side_effect=PyAsn1Error())
-    assert not pubkey.verify(standard_payload, correct_signature)
+    assert not pubkey.verify(STANDARD_PAYLOAD, correct_signature)
+
 
 def test_verify_padding_fails(keyset):
     pubkey, priv = localize_keys(keyset[0])
+
     def faux_sign(by):
         return rsau.b64_enc(priv.c_rsa(rsau.bytes_to_integer(by)), priv.bsize)
+
     fake_signature = faux_sign(b"\x00\x02" + (b"\xff" * (priv.bsize - 2)))
-    assert not pubkey.verify(standard_payload, fake_signature)
+    assert not pubkey.verify(STANDARD_PAYLOAD, fake_signature)
     fake_signature = faux_sign(b"\x00\x01" + (b"\xff" * (priv.bsize - 2)))
-    assert not pubkey.verify(standard_payload, fake_signature)
+    assert not pubkey.verify(STANDARD_PAYLOAD, fake_signature)
     fake_signature = faux_sign(b"\x00\x01\xff\xff\xff\x00" + (b"\xff" * (priv.bsize - 6)))
-    assert not pubkey.verify(standard_payload, fake_signature)
+    assert not pubkey.verify(STANDARD_PAYLOAD, fake_signature)
 
 
-def test_sign_verify(keyset, hashf, crt):
+def test_sign_verify(keyset, hashf, crt, capload):
     pubkey, priv = localize_keys(keyset[0], crt=crt)
-    signature = priv.sign(standard_payload, hashf)
-    assert pubkey.verify(standard_payload, signature)
+    signature = priv.sign(capload.decode("utf-8"), hashf)
+    assert pubkey.verify(capload.decode("utf-8"), signature)
 
 
 @pytest.mark.parametrize("flow", [-1, 1])
@@ -314,7 +321,7 @@ def test_overflow_underflow_c_rsa(keyset, flow):
         pubkey.c_rsa(pubkey.mod * flow)
 
 
-@pytest.mark.parametrize("payload", [b"", b"Quick!", b"A" * 64, standard_payload.encode("utf-8")])
+@pytest.mark.parametrize("payload", [b"", b"Quick!", b"A" * 64, STANDARD_PAYLOAD.encode("utf-8")])
 def test_pem_read_write(payload, tmp_path):
     pld = tmp_path / "testpem.pem"
     rsau.write_pem(pld, "PKCS8", payload)
