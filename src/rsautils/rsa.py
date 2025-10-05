@@ -17,6 +17,7 @@ import hashlib
 from math import ceil
 import pathlib
 from secrets import token_bytes
+import typing
 import warnings
 
 from pyasn1 import error
@@ -31,16 +32,51 @@ from pyasn1_modules import rfc8017
 
 from rsautils import keygen
 
-HASH_TLL = {
-    "sha256": (hashlib.sha256, rfc8017.id_sha256, 32, 2**61 - 1),
-    "sha384": (hashlib.sha384, rfc8017.id_sha384, 48, 2**125 - 1),
-    "sha512": (hashlib.sha512, rfc8017.id_sha512, 64, 2**125 - 1),
+class HashTranslation(typing.NamedTuple):
+    func: typing.Callable
+    ident: univ.ObjectIdentifier
+    length: int
+    max_payload: int
+
+class HashObjectID(typing.NamedTuple):
+    internal: str
+    oaep: rfc5208.AlgorithmIdentifier
+
+
+HASH_TLL: dict[str, HashTranslation] = {
+    "sha256": HashTranslation(
+        func=hashlib.sha256,
+        ident=rfc8017.id_sha256,
+        length=32,
+        max_payload=2**61 - 1,
+    ),
+    "sha384": HashTranslation(
+        func=hashlib.sha384,
+        ident=rfc8017.id_sha384,
+        length=48,
+        max_payload=2**125 - 1,
+    ),
+    "sha512": HashTranslation(
+        func=hashlib.sha512,
+        ident=rfc8017.id_sha512,
+        length=64,
+        max_payload=2**125 - 1,
+    )
 }
 
-HASH_OID = {
-    rfc8017.id_sha256: ("sha256", rfc4055.rSAES_OAEP_SHA256_Identifier),
-    rfc8017.id_sha384: ("sha384", rfc4055.rSAES_OAEP_SHA384_Identifier),
-    rfc8017.id_sha512: ("sha512", rfc4055.rSAES_OAEP_SHA512_Identifier),
+HASH_OID: dict[univ.ObjectIdentifier, HashObjectID] = {
+    rfc8017.id_sha256: HashObjectID(
+        internal="sha256",
+        oaep=rfc4055.rSAES_OAEP_SHA256_Identifier
+    ),
+    rfc8017.id_sha384: HashObjectID(
+        internal="sha384",
+        oaep=rfc4055.rSAES_OAEP_SHA384_Identifier
+    ),
+    rfc8017.id_sha512: HashObjectID(
+        internal="sha512",
+        oaep=rfc4055.rSAES_OAEP_SHA512_Identifier
+    ),
 }
 
 PEM_TYPES = {
@@ -157,7 +193,7 @@ class RSAPubKey(RSAKey):
             enc_id["algorithm"] = id_RSAES_pure
             enc_id["parameters"] = univ.Null("")
         else:
-            ident = HASH_OID[HASH_TLL[hashf][1]][1]
+            ident = HASH_OID[HASH_TLL[hashf].ident].oaep
             ciphertext = self.enc_oaep(message, label, hashf)
             enc_id = ident
         pld = RSAMessage()
@@ -195,7 +231,7 @@ class RSAPubKey(RSAKey):
         en_payload = rec_bytes[li + 1:]
         try:
             payload, _ = decoder.decode(en_payload, asn1Spec=rfc8017.DigestInfo())
-            hasher = HASH_TLL[HASH_OID[payload["digestAlgorithm"]["algorithm"]][0]][0]
+            hasher = HASH_TLL[HASH_OID[payload["digestAlgorithm"]["algorithm"]].internal].func
             hashd = payload["digest"]
             return hasher(message.encode()).digest() == hashd
         except (error.PyAsn1Error, KeyError):
@@ -377,7 +413,7 @@ class RSAPrivKey(RSAKey):
             bts = integer_to_bytes(payload, self.bsize).lstrip(b"\x00")
         elif pld["encryptionAlgorithm"]["algorithm"] == rfc8017.id_RSAES_OAEP:
             params, _ = decoder.decode(pld["encryptionAlgorithm"]["parameters"], asn1Spec=rfc8017.RSAES_OAEP_params())
-            hashf = HASH_OID[params["hashFunc"]["algorithm"]][0]
+            hashf = HASH_OID[params["hashFunc"]["algorithm"]].internal
             bts = self.dec_oaep(ctx, label, hashf)
         else:
             raise RuntimeError("Unknown encryption algorithm.")

@@ -44,7 +44,7 @@ def crt(request) -> bool:
 def capload(request, hashf, keyset):
     """Returns a capped payload in bytes."""
     keysz = keyset[0].key_size // 8
-    hlen = rsau.HASH_TLL[hashf][2]
+    hlen = rsau.HASH_TLL[hashf].length
     max_len = keysz - 2 * (hlen + 1)
     if max_len <= 0:
         pytest.skip(f"Key size {keysz} is too small for {hashf}.")
@@ -367,7 +367,7 @@ def test_pem_read_nonbase64(tmp_path):
 
 
 def test_mgf1_validates(hashf):
-    hlen = rsau.HASH_TLL[hashf][2]
+    hlen = rsau.HASH_TLL[hashf].length
     seed = b"\x00" * hlen
     with pytest.raises(ValueError, match="Mask too long for the specified hash function"):
         rsau.mgf1(seed, 2**32 * (hlen + 1), hashf)

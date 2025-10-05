@@ -19,27 +19,91 @@ import typing
 
 import rsautils
 
-# key: subcommand or parameter
-# value: "Brief Description", type/choices or None if a subcommand, ("Advanced Parameter?", Default Value)
-help_dict: dict[str, tuple[str, list[str] | type | None, tuple[bool, typing.Any]]] = {
-    "subcommand": ("The available subcommands in RSA Utils", ["keygen", "encrypt", "decrypt", "sign",
-                                                              "verify"], (False, None)),
-    "public_key": ("Location of the public key file", pathlib.Path, (False, None)),
-    "private_key": ("Location of the private key file", pathlib.Path, (False, None)),
-    "message": ("Message or path to file containing payload. If Path start with `P:`", str, (False, None)),
-    "label": ("Encrypted payload label. Used to verify during decryption.", str, (True, "")),
-    "encoding": ("Payload encoding", ["utf-8", "utf-16", "ascii"], (True, "utf-8")),
-    "academic": ("Whether to use academic encryption. Warning! Unsecure.", bool, (True, False)),
-    "keygen": ("Key generation utility", None, (False, None)),
-    "keysize": ("Size of key in bits.", ["2048", "3072", "4096"], (False, "3072")),
-    "pub_exponent": ("Exponent for public key", int, (True, 65537)),
-    "encrypt": ("Encryption utility", None, (False, None)),
-    "decrypt": ("Decryption utility", None, (False, None)),
-    "sign": ("Signature utility", None, (False, None)),
-    "sha": ("Specific SHA algorithm to use", ["sha256", "sha384", "sha512"], (True, "sha384")),
-    "verify": ("Signature Verification utility", None, (False, None)),
-    "signature": ("The signature to validate against the payload and public certificate.", str, (False, None)),
-    "overwrite": ("Overwrite specified destination files if they exist?", str, ["Y", "N"], (False, "N")),
+
+class HelpData(typing.NamedTuple):
+    description: str
+    format: typing.Type = str
+    choices: list[str] | None = None
+    default: typing.Any = None
+    advanced: bool = False
+
+
+help_dict: dict[str, HelpData] = {
+    "subcommand":
+        HelpData(
+            description="The available subcommands in RSA Utils.",
+            choices=["keygen", "encrypt", "decrypt", "sign", "verify"],
+        ),
+    "keygen":
+        HelpData("Key generation utility."),
+    "encrypt":
+        HelpData("Encryption utility."),
+    "decrypt":
+        HelpData("Decryption utility."),
+    "sign":
+        HelpData("Signing utility."),
+    "verify":
+        HelpData("Signature verification utility."),
+    "public_key":
+        HelpData(
+            description="Location of the public key file.",
+            format=pathlib.Path,
+        ),
+    "private_key":
+        HelpData(
+            description="Location of the private key file.",
+            format=pathlib.Path,
+        ),
+    "message":
+        HelpData(
+            description="Message or path to file containing payload. If Path start with `P:`",
+            format=str,
+        ),
+    "label":
+        HelpData(
+            description="Encrypted payload label. Used to verify during decryption.",
+            format=str,
+            advanced=True,
+            default="",
+        ),
+    "encoding":
+        HelpData(description="Payload encoding.", choices=["utf-8", "utf-16", "ascii"], advanced=True, default="utf-8"),
+    "academic":
+        HelpData(
+            description="Whether to use academic encryption. Warning! Unsecure.",
+            format=bool,
+            advanced=True,
+            default=False,
+        ),
+    "keysize":
+        HelpData(
+            description="Key size (in bits).",
+            choices=["2048", "3072", "4096"],
+            default="3072",
+        ),
+    "pub_exponent":
+        HelpData(
+            description="Exponent for the public key.",
+            format=int,
+            advanced=True,
+            default=65537,
+        ),
+    "sha":
+        HelpData(description="Specific SHA algorithm to use",
+                 choices=["sha256", "sha384", "sha512"],
+                 advanced=True,
+                 default="sha384"),
+    "signature":
+        HelpData(
+            description="The signature to validate against the payload and public certificate.",
+            format=str,
+        ),
+    "overwrite":
+        HelpData(
+            description="Overwrite specified destination files if they exist?",
+            choices=["Y", "N"],
+            default="N",
+        )
 }
 
 needs = {
@@ -50,97 +114,93 @@ needs = {
     "verify": ("public_key", "message", "signature")
 }
 
-
-class SpecPrint:
-
-    def __init__(self, mode: bool):
-        self.mode = mode
-
-    def __call__(self, mess: str):
-        if not self.mode:
-            print(mess)
-
-
 pubkey = argparse.ArgumentParser(add_help=False)
-pubkey.add_argument("--public_key", "-p", type=pathlib.Path, help=help_dict["public_key"][0])
+pubkey.add_argument("--public_key", "-p", type=help_dict["public_key"].format, help=help_dict["public_key"].description)
 privkey = argparse.ArgumentParser(add_help=False)
-privkey.add_argument("--private_key", "-P", type=pathlib.Path, help=help_dict["private_key"][0])
+privkey.add_argument("--private_key",
+                     "-P",
+                     type=help_dict["private_key"].format,
+                     help=help_dict["private_key"].description)
 payloads = argparse.ArgumentParser(add_help=False)
-payloads.add_argument("--message", type=str, help=help_dict["message"][0])
+payloads.add_argument("--message", type=help_dict["message"].format, help=help_dict["message"].description)
 encp = argparse.ArgumentParser(add_help=False)
-encp.add_argument("--encoding", "-e", type=str, choices=help_dict["encoding"][1], help=help_dict["encoding"][0])
+encp.add_argument("--encoding", "-e", choices=help_dict["encoding"].choices, help=help_dict["encoding"].description)
 sha = argparse.ArgumentParser(add_help=False)
-sha.add_argument("--sha", "-s", type=str, choices=help_dict["sha"][1], help=help_dict["sha"][0])
+sha.add_argument("--sha", "-s", choices=help_dict["sha"].choices, help=help_dict["sha"].description)
 label = argparse.ArgumentParser(add_help=False)
-label.add_argument("--label", "-l", type=str, help=help_dict["label"][0])
+label.add_argument("--label", "-l", type=help_dict["label"].format, help=help_dict["label"].description)
 corep = argparse.ArgumentParser(prog="rsautils")
 corep.add_argument("--version", "-v", action="version", version=f"%(prog)s {rsautils.__version__}")
 corep.add_argument("--non-interactive", "-n", action="store_true", help="Enable non-interactive mode")
 corep.add_argument("--advanced", "-a", action="store_true", help="Enable advanced mode, for interactive mode")
 commands = corep.add_subparsers(dest="subcommand", title="Subcommands")
 
-keygen = commands.add_parser("keygen", parents=[privkey, pubkey], help=help_dict["keygen"][0])
-keygen.add_argument("--keysize", type=str, choices=help_dict["keysize"][1], help=help_dict["keysize"][0])
-keygen.add_argument("--pub-exponent", type=int, help=help_dict["pub_exponent"][0])
-keygen.add_argument("--overwrite", "-o", action="store_const", const="Y", help=help_dict["overwrite"][0])
+keygen = commands.add_parser("keygen", parents=[privkey, pubkey], help=help_dict["keygen"].description)
+keygen.add_argument("--keysize", choices=help_dict["keysize"].choices, help=help_dict["keysize"].description)
+keygen.add_argument("--pub-exponent", type=help_dict["pub_exponent"].format, help=help_dict["pub_exponent"].description)
+keygen.add_argument("--overwrite", "-o", action="store_const", const="Y", help=help_dict["overwrite"].description)
 
-encrypt = commands.add_parser("encrypt", parents=[pubkey, payloads, label, sha, encp], help=help_dict["encrypt"][0])
-encrypt.add_argument("--academic", "-A", action="store_true", help=help_dict["academic"][0])
-decrypt = commands.add_parser("decrypt", parents=[privkey, payloads, label, encp], help=help_dict["decrypt"][0])
+encrypt = commands.add_parser("encrypt",
+                              parents=[pubkey, payloads, label, sha, encp],
+                              help=help_dict["encrypt"].description)
+encrypt.add_argument("--academic", "-A", action="store_true", help=help_dict["academic"].description)
+decrypt = commands.add_parser("decrypt",
+                              parents=[privkey, payloads, label, encp],
+                              help=help_dict["decrypt"].description)
 
-sign = commands.add_parser("sign", parents=[privkey, payloads, sha], help=help_dict["sign"][0])
-verify = commands.add_parser("verify", parents=[pubkey, payloads], help=help_dict["verify"][0])
-verify.add_argument("--signature", "-S", type=str, help=help_dict["signature"][0])
+sign = commands.add_parser("sign", parents=[privkey, payloads, sha], help=help_dict["sign"].description)
+verify = commands.add_parser("verify", parents=[pubkey, payloads], help=help_dict["verify"].description)
+verify.add_argument("--signature", "-S", type=help_dict["signature"].format, help=help_dict["signature"].description)
 
 
 def checkmodes(arg: str, mode: tuple[bool, bool]):
-    rw = help_dict[arg]
-    if ((not mode[1]) or mode[0]) and rw[2][0]:
-        return rw[2][1]
+    helper_data = help_dict[arg]
+    if (mode[0] or (helper_data.advanced and not mode[1])) and helper_data.default:
+        return helper_data.default
     if mode[0]:
-        raise IOError("An argument is missing and non-interactive mode is active.")
-    return rw
+        raise IOError(f"Argument {arg} is missing and non-interactive mode is active.")
+    return helper_data
 
 
 def choice_handler(arg: str, mode: tuple[bool, bool], prntr: typing.Callable = print):
-    rw = checkmodes(arg, mode)
-    if not isinstance(rw, tuple):
-        return rw
+    helper_data = checkmodes(arg, mode)
+    if not isinstance(helper_data, HelpData):
+        return helper_data
     prntr(f"Please specify the {arg}!")
-    prntr("Description: ", rw[0])
-    choices = rw[1]
+    prntr("Description: ", helper_data.description)
+    choices = helper_data.choices
     vald = set(choices)
     for choice in choices:
-        defstring = " (Default)" if choice == rw[2][1] else ""
+        defstring = " (Default)" if choice == helper_data.default else ""
         if help_dict.get(choice, None):
-            prntr(f"{choice} - {help_dict[choice][0]}", defstring)
+            prntr(f"{choice} - {help_dict[choice].description}", defstring)
         else:
             prntr(f"{choice}", defstring)
-    if rw[2][1] is not None:
+    if helper_data.default is not None:
         prntr("To accept default just click enter. Otherwise specify value.")
     while True:
         ch = input(f"{arg}: ")
         if ch in vald:
             return ch
-        if not ch and rw[2][1] is not None:
-            return rw[2][1]
+        if not ch and helper_data.default is not None:
+            return helper_data.default
         prntr("Please select an option from the list.")
 
 
 def input_handler(arg: str, mode: tuple[bool, bool], prntr: typing.Callable = print):
-    rw = checkmodes(arg, mode)
-    if not isinstance(rw, tuple):
-        return rw
+    helper_data = checkmodes(arg, mode)
+    if not isinstance(helper_data, HelpData):
+        return helper_data
     prntr(f"Please specify the {arg}!")
-    prntr("Description: ", rw[0])
-    if rw[2][1] is not None:
-        prntr(f"Default value: {rw[2][1]}")
+    prntr("Description: ", helper_data.description)
+    if helper_data.default is not None:
+        prntr(f"Default value: {helper_data.default}")
         prntr("To accept default just click enter. Otherwise specify value.")
-    cls = rw[1]
+    cls = helper_data.format
     while True:
         ch = input(f"{arg}: ")
-        if not ch and rw[2][1] is not None:
-            return rw[2][1]
+        if not ch and helper_data.default is not None:
+            return helper_data.default
         if ch == "":
             prntr("Please provide a value.")
             continue
@@ -151,6 +211,7 @@ def input_handler(arg: str, mode: tuple[bool, bool], prntr: typing.Callable = pr
 
 
 def check_message(mess: str, enc) -> str:
+    """Parse message for path-notice."""
     if mess.startswith("P:"):
         mess = mess[2:]
         with open(mess, "r", encoding=enc) as f:
@@ -162,13 +223,18 @@ def main():
     """Core Hybrid CLI/ICLI (Command Line Interface/Interactive Command Lice Interface)"""
     args = corep.parse_args()
     pstatus = (args.non_interactive, args.advanced)
-    pspr = SpecPrint(pstatus[0])
+
+    def pspr(text: str):
+        """Print only if not in non-interactive mode."""
+        if not pstatus[0]:
+            print(text)
+
     pspr("Welcome to RSA Utils!\n")
     if not args.subcommand:
         args.subcommand = choice_handler("subcommand", pstatus)
     for reqs in needs[args.subcommand]:
         if getattr(args, reqs, None) is None:
-            if isinstance(help_dict[reqs][1], list):
+            if help_dict[reqs].choices is not None:
                 res = choice_handler(reqs, pstatus)
             else:
                 res = input_handler(reqs, pstatus)
