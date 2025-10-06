@@ -167,7 +167,7 @@ def choice_handler(arg: str, mode: tuple[bool, bool], prntr: typing.Callable = p
     if not isinstance(helper_data, HelpData):
         return helper_data
     prntr(f"Please specify the {arg}!")
-    prntr("Description: ", helper_data.description)
+    prntr("Description: " + helper_data.description)
     choices = helper_data.choices
     vald = set(choices)
     for choice in choices:
