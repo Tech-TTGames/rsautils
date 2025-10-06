@@ -173,9 +173,9 @@ def choice_handler(arg: str, mode: tuple[bool, bool], prntr: typing.Callable = p
     for choice in choices:
         defstring = " (Default)" if choice == helper_data.default else ""
         if help_dict.get(choice, None):
-            prntr(f"{choice} - {help_dict[choice].description}", defstring)
+            prntr(f"{choice} - {help_dict[choice].description}" + defstring)
         else:
-            prntr(f"{choice}", defstring)
+            prntr(f"{choice}" + defstring)
     if helper_data.default is not None:
         prntr("To accept default just click enter. Otherwise specify value.")
     while True:
@@ -192,7 +192,7 @@ def input_handler(arg: str, mode: tuple[bool, bool], prntr: typing.Callable = pr
     if not isinstance(helper_data, HelpData):
         return helper_data
     prntr(f"Please specify the {arg}!")
-    prntr("Description: ", helper_data.description)
+    prntr("Description: " + helper_data.description)
     if helper_data.default is not None:
         prntr(f"Default value: {helper_data.default}")
         prntr("To accept default just click enter. Otherwise specify value.")

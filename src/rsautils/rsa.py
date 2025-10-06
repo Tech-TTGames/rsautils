@@ -32,11 +32,13 @@ from pyasn1_modules import rfc8017
 
 from rsautils import keygen
 
+
 class HashTranslation(typing.NamedTuple):
     func: typing.Callable
     ident: univ.ObjectIdentifier
     length: int
     max_payload: int
+
 
 class HashObjectID(typing.NamedTuple):
     internal: str
@@ -65,18 +67,9 @@ HASH_TLL: dict[str, HashTranslation] = {
 }
 
 HASH_OID: dict[univ.ObjectIdentifier, HashObjectID] = {
-    rfc8017.id_sha256: HashObjectID(
-        internal="sha256",
-        oaep=rfc4055.rSAES_OAEP_SHA256_Identifier
-    ),
-    rfc8017.id_sha384: HashObjectID(
-        internal="sha384",
-        oaep=rfc4055.rSAES_OAEP_SHA384_Identifier
-    ),
-    rfc8017.id_sha512: HashObjectID(
-        internal="sha512",
-        oaep=rfc4055.rSAES_OAEP_SHA512_Identifier
-    ),
+    rfc8017.id_sha256: HashObjectID(internal="sha256", oaep=rfc4055.rSAES_OAEP_SHA256_Identifier),
+    rfc8017.id_sha384: HashObjectID(internal="sha384", oaep=rfc4055.rSAES_OAEP_SHA384_Identifier),
+    rfc8017.id_sha512: HashObjectID(internal="sha512", oaep=rfc4055.rSAES_OAEP_SHA512_Identifier),
 }
 
 PEM_TYPES = {
