@@ -1,6 +1,7 @@
 # pylint: disable=protected-access,missing-module-docstring,redefined-outer-name
 # Copyright (c) 2025-present Tech. TTGames
 # SPDX-License-Identifier: EPL-2.0
+import itertools
 import math
 import pathlib
 import pickle
@@ -22,6 +23,23 @@ with open(LOCATION / "data" / "primes.txt", encoding="utf-8") as f:
 
 with open(LOCATION / "data" / "rsa_primes.pickle", "rb") as f:
     RSA_DICT = pickle.load(f)
+
+NIST_PRIMES = []
+with open(LOCATION / "data" / "nist_primes.txt", encoding="utf-8") as f:
+    for line in f.readlines():
+        if line.startswith("#"):
+            continue
+        NIST_PRIMES.append((int(line.strip(), base=16), True))
+
+TEST_SIZES = [
+    1024,
+    2048,
+    3072,
+    pytest.param(4096, marks=pytest.mark.slow),
+    pytest.param(7680, marks=pytest.mark.extreme),
+    pytest.param(8192, marks=pytest.mark.extreme),
+    pytest.param(15360, marks=pytest.mark.extreme),
+]
 
 BASE_CASES = [
     # Edge Cases (neither)
@@ -50,10 +68,7 @@ BASE_CASES = [
     (52633, False),
 ]
 
-LARGE_CASES = [
-    # Current Largest Known Prime
-    pytest.param(2**136279841 - 1, True, marks=pytest.mark.extreme, id="LargeInt-MaxPrime"),
-    # RSA PRIMES
+RSA_PRIMES = [
     (RSA_DICT[1024][0], True),
     (RSA_DICT[1024][1], True),
     (RSA_DICT[2048][0], True),
@@ -62,46 +77,40 @@ LARGE_CASES = [
     (RSA_DICT[3072][1], True),
     (RSA_DICT[4096][0], True),
     (RSA_DICT[4096][1], True),
-    # RSA non-PRIMES (low multiplier)
-    (RSA_DICT[1024][0] * 3, False),
-    (RSA_DICT[1024][1] * 3, False),
-    (RSA_DICT[2048][0] * 3, False),
-    (RSA_DICT[2048][1] * 3, False),
-    (RSA_DICT[3072][0] * 3, False),
-    (RSA_DICT[3072][1] * 3, False),
-    (RSA_DICT[4096][0] * 3, False),
-    (RSA_DICT[4096][1] * 3, False)
 ]
 
-RSA_COMPOSITE_CASES = [
-    # RSA Prime Composites
-    (RSA_DICT[1024][0] * RSA_DICT[1024][1], False),
-    (RSA_DICT[1024][0] * RSA_DICT[2048][1], False),
-    (RSA_DICT[2048][0] * RSA_DICT[2048][1], False),
-    (RSA_DICT[2048][0] * RSA_DICT[3072][1], False),
-    (RSA_DICT[3072][0] * RSA_DICT[3072][1], False),
-    (RSA_DICT[3072][0] * RSA_DICT[4096][1], False),
-    (RSA_DICT[4096][0] * RSA_DICT[4096][1], False),
-    # RSA non-PRIMES (probably)
-    (RSA_DICT[1024][0] + 4, False),
-    (RSA_DICT[1024][1] + 4, False),
-    (RSA_DICT[2048][0] + 4, False),
-    (RSA_DICT[2048][1] + 4, False),
-    (RSA_DICT[3072][0] + 4, False),
-    (RSA_DICT[3072][1] + 4, False),
-    (RSA_DICT[4096][0] + 4, False),
-    (RSA_DICT[4096][1] + 4, False)
+MERSENNE_PRIMES = [
+    (2**127 - 1, True),  # Mersenne Prime 127
+    (2**521 - 1, True),  # Mersenne Prime 521
+    (2**607 - 1, True),  # Mersenne Prime 607
+    (2**1279 - 1, True),  # Mersenne Prime 1279
+    (2**2203 - 1, True),  # Mersenne Prime 2203
+    (2**2281 - 1, True),  # Mersenne Prime 2281
+    (2**3217 - 1, True),  # Mersenne Prime 3217
+    (2**4253 - 1, True),  # Mersenne Prime 4253
+    (2**4423 - 1, True),  # Mersenne Prime 4423
 ]
 
-TEST_SIZES = [
-    1024,
-    2048,
-    3072,
-    pytest.param(4096, marks=pytest.mark.slow),
-    pytest.param(7680, marks=pytest.mark.extreme),
-    pytest.param(8192, marks=pytest.mark.extreme),
-    pytest.param(15360, marks=pytest.mark.extreme),
-]
+KNOWN_PRIMES = sorted(MERSENNE_PRIMES + NIST_PRIMES)
+ALL_PRIMES = RSA_PRIMES + KNOWN_PRIMES
+
+
+def compositer(src: list[tuple[int, bool]]) -> list[tuple[int, bool]]:
+    res: list[tuple[int, bool]] = []
+    for prime_a, prime_b in itertools.pairwise(src):
+        composites = (prime_a[0] * prime_b[0], prime_a[0] + 4)
+        for composite in composites:
+            val = (composite, False)
+            if composite.bit_length() > 10000:
+                val = pytest.param(*val, marks=pytest.mark.slow)
+            res.append(val)
+    return res
+
+
+RSA_COMPOSITES = compositer(RSA_PRIMES)
+SPECIAL_COMPOSITES = compositer(KNOWN_PRIMES)
+ALL_COMPOSITES = RSA_COMPOSITES + SPECIAL_COMPOSITES
+ALL_CASES = BASE_CASES + ALL_COMPOSITES
 
 
 @pytest.fixture(scope="module", params=TEST_SIZES)
@@ -236,12 +245,12 @@ def test_import_integrity(local):
         keygen.import_primes(__file__, "NoU", local=local)
 
 
-@pytest.mark.parametrize("n,expected", BASE_CASES + LARGE_CASES, ids=id_generator)
+@pytest.mark.parametrize("n,expected", BASE_CASES, ids=id_generator)
 def test_trial_division(n, expected):
     assert keygen._trial_division(n) == expected
 
 
-@pytest.mark.parametrize("n,expected", BASE_CASES + LARGE_CASES + RSA_COMPOSITE_CASES, ids=id_generator)
+@pytest.mark.parametrize("n,expected", ALL_CASES, ids=id_generator)
 def test_miller_rabin(n, expected):
     assert keygen._miller_rabin(n, 5) == expected
 
@@ -252,7 +261,7 @@ def test_miller_rabin_cover_branch(mocker):
     assert keygen._miller_rabin(w=561, iters=1) is False
 
 
-@pytest.mark.parametrize("n,expected", BASE_CASES + LARGE_CASES + RSA_COMPOSITE_CASES, ids=id_generator)
+@pytest.mark.parametrize("n,expected", ALL_CASES, ids=id_generator)
 def test_check_prime(n, expected):
     assert keygen.check_prime(n) == expected
 
