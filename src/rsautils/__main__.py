@@ -26,6 +26,7 @@ class HelpData(typing.NamedTuple):
     choices: list[str] | None = None
     default: typing.Any = None
     advanced: bool = False
+    may_be_falsey: bool = False
 
 
 help_dict: dict[str, HelpData] = {
@@ -58,6 +59,7 @@ help_dict: dict[str, HelpData] = {
         HelpData(
             description="Message or path to file containing payload. If Path start with `P:`",
             format=str,
+            may_be_falsey=True,
         ),
     "label":
         HelpData(
@@ -65,6 +67,7 @@ help_dict: dict[str, HelpData] = {
             format=str,
             advanced=True,
             default="",
+            may_be_falsey=True,
         ),
     "encoding":
         HelpData(description="Payload encoding.", choices=["utf-8", "utf-16", "ascii"], advanced=True, default="utf-8"),
@@ -155,7 +158,7 @@ verify.add_argument("--signature", "-S", type=help_dict["signature"].format, hel
 
 def checkmodes(arg: str, mode: tuple[bool, bool]):
     helper_data = help_dict[arg]
-    if (mode[0] or (helper_data.advanced and not mode[1])) and helper_data.default:
+    if (mode[0] or (helper_data.advanced and not mode[1])) and helper_data.default is not None:
         return helper_data.default
     if mode[0]:
         raise IOError(f"Argument {arg} is missing and non-interactive mode is active.")
@@ -172,7 +175,7 @@ def choice_handler(arg: str, mode: tuple[bool, bool], prntr: typing.Callable = p
     vald = set(choices)
     for choice in choices:
         defstring = " (Default)" if choice == helper_data.default else ""
-        if help_dict.get(choice, None):
+        if help_dict.get(choice, None) is not None:
             prntr(f"{choice} - {help_dict[choice].description}" + defstring)
         else:
             prntr(f"{choice}" + defstring)
@@ -201,7 +204,7 @@ def input_handler(arg: str, mode: tuple[bool, bool], prntr: typing.Callable = pr
         ch = input(f"{arg}: ")
         if not ch and helper_data.default is not None:
             return helper_data.default
-        if ch == "":
+        if ch == "" and not helper_data.may_be_falsey:
             prntr("Please provide a value.")
             continue
         try:
@@ -223,6 +226,7 @@ def main():
     """Core Hybrid CLI/ICLI (Command Line Interface/Interactive Command Lice Interface)"""
     args = corep.parse_args()
     pstatus = (args.non_interactive, args.advanced)
+    ex_value = 0
 
     def pspr(text: str):
         """Print only if not in non-interactive mode."""
@@ -283,9 +287,10 @@ def main():
                 pspr("Signature Verified!")
             else:
                 print("Signature Verification Failed!")
-                sys.exit(1)
+                ex_value = 1
     pspr("Thank you for using RSA Utils!")
     pspr("Goodbye!")
+    sys.exit(ex_value)
 
 
 if __name__ == "__main__":
