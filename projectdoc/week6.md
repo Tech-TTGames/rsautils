@@ -16,6 +16,8 @@ N/A
 
 **Challenges:**
 I kinda struggle with writing but not many issues.
+Some feedback on the current state of the [Implementation Document](./impldoc.md) would be appreciated.
+Please ignore the few missing complexity analyses, I will add them later.
 
 **Next Up:**
 Final tweaks & Cleanups, Code Review.
