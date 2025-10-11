@@ -118,16 +118,16 @@ needs = {
 }
 
 pubkey = argparse.ArgumentParser(add_help=False)
-pubkey.add_argument("--public_key", "-p", type=help_dict["public_key"].format, help=help_dict["public_key"].description)
+pubkey.add_argument("--public-key", "-p", type=help_dict["public_key"].format, help=help_dict["public_key"].description)
 privkey = argparse.ArgumentParser(add_help=False)
-privkey.add_argument("--private_key",
+privkey.add_argument("--private-key",
                      "-P",
                      type=help_dict["private_key"].format,
                      help=help_dict["private_key"].description)
 payloads = argparse.ArgumentParser(add_help=False)
-payloads.add_argument("--message", type=help_dict["message"].format, help=help_dict["message"].description)
+payloads.add_argument("--message", "-m", type=help_dict["message"].format, help=help_dict["message"].description)
 encp = argparse.ArgumentParser(add_help=False)
-encp.add_argument("--encoding", "-e", choices=help_dict["encoding"].choices, help=help_dict["encoding"].description)
+encp.add_argument("--encoding", "-c", choices=help_dict["encoding"].choices, help=help_dict["encoding"].description)
 sha = argparse.ArgumentParser(add_help=False)
 sha.add_argument("--sha", "-s", choices=help_dict["sha"].choices, help=help_dict["sha"].description)
 label = argparse.ArgumentParser(add_help=False)
@@ -139,8 +139,11 @@ corep.add_argument("--advanced", "-a", action="store_true", help="Enable advance
 commands = corep.add_subparsers(dest="subcommand", title="Subcommands")
 
 keygen = commands.add_parser("keygen", parents=[privkey, pubkey], help=help_dict["keygen"].description)
-keygen.add_argument("--keysize", choices=help_dict["keysize"].choices, help=help_dict["keysize"].description)
-keygen.add_argument("--pub-exponent", type=help_dict["pub_exponent"].format, help=help_dict["pub_exponent"].description)
+keygen.add_argument("--keysize", "-k", choices=help_dict["keysize"].choices, help=help_dict["keysize"].description)
+keygen.add_argument("--pub-exponent",
+                    "-e",
+                    type=help_dict["pub_exponent"].format,
+                    help=help_dict["pub_exponent"].description)
 keygen.add_argument("--overwrite", "-o", action="store_const", const="Y", help=help_dict["overwrite"].description)
 
 encrypt = commands.add_parser("encrypt",
