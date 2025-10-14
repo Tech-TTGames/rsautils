@@ -51,23 +51,23 @@ In addition, there are configuration files and metadata files in the root direct
 Most of the complex algorithms in the project are implemented in `keygen.py` with a limited number of such algorithms on
 the `rsa.py` side.
 
+Space complexity is assumed to be: O(*log* n)
+
 #### Key Generation
 Key generation algorithms are mostly based on the DSS standard [1], with some modifications for efficiency and localization to Python.
 
 1. Sieve of Eratosthenes: Used for generating a list of small primes used in primary-level testing of primes during a full check run.
 Moderately optimized for speed and memory usage, implemented using a boolean list, solely for odd numbers and stopping at the square root of the limit.
-   - **Time Complexity**: `O(n log log n)` where n is the limit up to which primes are generated.
-   - **Space Complexity**: `O(n)` (though in practice half of n due to only storing odd numbers).
+   - **Time Complexity**: O(n *log* *log* n)   where n is the limit up to which primes are generated.
+   - **Space Complexity**: O(n) (though in practice half of n due to only storing odd numbers).
 
 2. Limited Trial Division (LTD): Used as the first step in primality testing to quickly eliminate non-prime candidates. Uses the Sieve of Eratosthenes to generate small primes.
 Iterates through the small primes up to the square root of the candidate number or a fixed limit (whichever is smaller) to check for divisibility. Returns false if any small prime divides the candidate, true otherwise.
-   - **Time Complexity**:
-   - **Space Complexity**:
+   - **Time Complexity**: O(sqrt(n)/*log* sqrt(n)) in worst case, where n is the candidate.
 
 3. Miller-Rabin (M-R) Primality Test: Performs probabilistic primality testing to determine if a number is likely to be prime. Core algorithm of the project.
 Does not implement any special optimizations, mostly due to the complexity of such optimizations and the fact that Python is not a low-level language.
-   - **Time Complexity**:
-   - **Space Complexity**:
+   - **Time Complexity**: O(k *log*<sup>3</sup> n) where k is the number of rounds and n candidate number.
 
 4. Full Primality Test: Combines LTD and M-R tests to provide a full and moderately optimized primality test.
 Implements some automatic parametrization based on the size (such as selecting the number of M-R rounds based on estimated security bits).
@@ -80,12 +80,11 @@ Apart from special conditions, it mostly acts as an orchestration function, thou
 On the RSA side, we mostly implement algorithms from RFC 8017 [2], with some modifications for efficiency and localization to Python.
 
 1. Core RSA Operation: Implements the core RSA operation (modular exponentiation) using Python's built-in `pow` function with three arguments for efficiency.
-   - **Time Complexity**:
-   - **Space Complexity**:
+   - **Time Complexity (Public Key)**: O(*log*<sup>2</sup> n)
+   - **Time Complexity (Private Key)**: O(*log*<sup>3</sup> n)
 
 2. CRT-Optimized Core RSA Operation: Implements the core RSA operation using the Chinese Remainder Theorem (CRT) for efficiency when using private keys with provided p and q.
-   - **Time Complexity**:
-   - **Space Complexity**:
+   - **Time Complexity**: O(*log*<sup>3</sup> n) though in practice due to smaller calcs may be as much as 4x faster.
 
 ### Security Considerations
 Some security considerations have been noted during the implementation of this project:
