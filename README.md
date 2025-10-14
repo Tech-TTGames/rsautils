@@ -19,3 +19,6 @@ cd rsautils
 poetry install
 ```
 requires [poetry](https://python-poetry.org/).
+
+### User Guide
+See [here](/projectdoc/userguide.md) for a detailed usage guide!
